@@ -2,7 +2,7 @@
   "name": "hax-serve",
   "version": "0.0.1",
   "description": "Hax server",
-  "main": "hax.js",
+  "main": "server.js",
   "devDependencies": {
     "esprima": "^2.7.2"
   },
