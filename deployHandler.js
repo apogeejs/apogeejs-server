@@ -1,4 +1,4 @@
-var hax = require('./lib/hax-node.min');
+var hax = require('hax-lib-node');
 var utils = require('./serviceUtils');
 var serviceRouter = null;
 
