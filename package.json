@@ -1,5 +1,5 @@
 {
-  "name": "hax-server-node",
+  "name": "hax-server",
   "version": "0.2.0",
   "description": "Hax server",
   "main": "server.js",
