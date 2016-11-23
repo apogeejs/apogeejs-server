@@ -95,7 +95,7 @@ function processEndpointBody(headlessWorkspaceJson,inputTableName,inputTableStri
 		console.log("Starting endpoint processing: " + inputTableStringData);
 		
 		//open the model
-		var workspace = new hax.core.Workspace(headlessWorkspaceJson);
+		var workspace = new hax.Workspace(headlessWorkspaceJson);
 		var rootFolder = workspace.getRoot();
 		
 		//set input, if applicable
@@ -108,7 +108,7 @@ function processEndpointBody(headlessWorkspaceJson,inputTableName,inputTableStri
 				utils.sendError(500,"Deployment error - Input table not found!",response);
 				return;
 			}
-			hax.core.updatemember.updateData(inputTable,inputTableData);
+			hax.updatemember.updateData(inputTable,inputTableData);
 		}
 		
 //THIS WILL NEED TO BE ASYNCHRONOUS!
