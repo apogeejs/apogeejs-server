@@ -4,7 +4,7 @@
   "description": "Hax server",
   "main": "server.js",
   "dependencies": {
-    "hax-core-lib": "^0.2.0"
+	"esprima": "~2.7.2"
   },
   "author": "Dave Sutter",
   "repository": {

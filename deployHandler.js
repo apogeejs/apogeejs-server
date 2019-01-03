@@ -1,4 +1,4 @@
-var hax = require('hax-lib-node');
+var apogee = require('./apogee-npm-lib');
 var utils = require('./serviceUtils');
 var serviceRouter = null;
 
@@ -95,7 +95,7 @@ function processEndpointBody(headlessWorkspaceJson,inputTableName,inputTableStri
 		console.log("Starting endpoint processing: " + inputTableStringData);
 		
 		//open the model
-		var workspace = new hax.Workspace(headlessWorkspaceJson);
+		var workspace = new apogee.Workspace(headlessWorkspaceJson);
 		var rootFolder = workspace.getRoot();
 		
 		//set input, if applicable
@@ -108,14 +108,24 @@ function processEndpointBody(headlessWorkspaceJson,inputTableName,inputTableStri
 				utils.sendError(500,"Deployment error - Input table not found!",response);
 				return;
 			}
-			hax.updatemember.updateData(inputTable,inputTableData);
+			
+			var actionData = {};
+			actionData.action = "updateData";
+            actionData.member = inputTable;
+            actionData.data = inputTableData;
+			
+			var actionResponse = apogee.action.doAction(actionData,false);        
+			if(!actionResponse.getSuccess()) {
+				//error executing action!
+				utils.sendError(500,actionResponse.getErrorMsg());
+			}
 		}
 		
 //THIS WILL NEED TO BE ASYNCHRONOUS!
 		
 		//get the output (maybe make this optional?)
 		var outputTable = rootFolder.lookupChild(outputTableName);
-		if(!inputTable) {
+		if(!outputTable) {
 			utils.sendError(500,"Deployment error - Output table not found!",response);
 			return;
 		}

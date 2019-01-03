@@ -1,6 +1,8 @@
 var http = require("http");
 var router = require("./router");
 
+require("./debugHook");
+
 var fileHandler = require("./fileHandler");
 var deployHandler = require("./deployHandler");
 deployHandler.init(router);
