@@ -22,6 +22,12 @@ class WorkspaceHandler {
         
 //note - for node, workspace load should be synchronous? Double check this.
 //IF NOT SYNCHRONOUS - rename the method and return a promise
+//checked - it loads synchronously - but that doesn't mean the output table is
+//finished - in principal it could finish at some later time and interfere with
+//the output listener during a request. Should we make sure the root folder
+//is not pending?
+//also double check precendence of error versus pending. We want pending to
+//be the one shown.  
 //also check for load error!
         
         //create output listener
@@ -149,74 +155,6 @@ class WorkspaceHandler {
         //for now we are not reusing
     }
 }
-    
-/////// OLD REFERENCE CODE
-    
-/** This method makes thhandler for the endpoint to be deployed. */
-function createHandler(headlessWorkspaceJson,inputTableName,outputTableName) {
-	return function(request,response,body) {
-		var onEndpointData = function(req,res,bd) {
-			processEndpointBody(headlessWorkspaceJson,inputTableName,bd,outputTableName,res);
-		}
-		
-		utils.readBody(request,response,onEndpointData);
-	}
-}
-
-/** This method process the endpoint request. */
-function processEndpointBody(headlessWorkspaceJson,inputTableName,inputTableStringData,outputTableName,response) {
-	try {		
-	
-		console.log("Starting endpoint processing: " + inputTableStringData);
-		
-		//open the model
-		var workspace = new apogee.Workspace(headlessWorkspaceJson);
-		var rootFolder = workspace.getRoot();
-		
-		//set input, if applicable
-		if(inputTableName) {
-			var inputTableData = JSON.parse(inputTableStringData);
-			
-			//set the input
-			var inputTable = rootFolder.lookupChild(inputTableName);
-			if(!inputTable) {
-				utils.sendError(500,"Deployment error - Input table not found!",response);
-				return;
-			}
-			
-			var actionData = {};
-			actionData.action = "updateData";
-            actionData.member = inputTable;
-            actionData.data = inputTableData;
-			
-			var actionResponse = apogee.action.doAction(actionData,false);        
-			if(!actionResponse.getSuccess()) {
-				//error executing action!
-				utils.sendError(500,actionResponse.getErrorMsg());
-			}
-		}
-		
-//THIS WILL NEED TO BE ASYNCHRONOUS!
-		
-		//get the output (maybe make this optional?)
-		var outputTable = rootFolder.lookupChild(outputTableName);
-		if(!outputTable) {
-			utils.sendError(500,"Deployment error - Output table not found!",response);
-			return;
-		}
-		var outputString = outputTable.getData();
-		var responseBody = JSON.stringify(outputString);
-		
-		//send response
-		response.writeHead(200, {"Content-Type":"text/plain"});
-		response.write(responseBody);
-		response.end();
-	}
-	catch(error) {
-		console.log("Error: " + error.stack);
-		sendError(500,error.stack,response);
-	}
-}
-
+   
 module.exports = WorkspaceHandler;
 
