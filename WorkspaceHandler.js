@@ -77,7 +77,7 @@ class WorkspaceHandler {
             if(rootFolder.getResultPending()) {
                 //watch root folder waiting for it to become ready
                 //after it is, set the status and return the resulting promise.
-                var workspaceReadyPromise = this._createMemberUpdatePromise(rootFolder,false);
+                var workspaceReadyPromise = this._createMemberUpdatePromise(rootFolder);
                 var workspaceGoodCallback = () => this._setStatusReady();
                 var workspaceErrorCallback = errMsg => this._setStatusError("error: initialization failed: " + errMsg);
                 return workspaceReadyPromise.then(workspaceGoodCallback).catch(workspaceErrorCallback).then(() => this.status);
@@ -123,12 +123,12 @@ class WorkspaceHandler {
         //configure the output change listener to react to request completion
         //-------------------------------
         if(endpointData.outputMembers.body) {
-            var responseReadyPromise = this._createMemberUpdatePromise(endpointData.outputs.body,true);
-            responseReadyPromise.then(bodyData => this._onProcessSuccess(bodyData)).catch(errorMsg => this._onProcessError(errorMsg)); 
+            var responseReadyPromise = this._createMemberUpdatePromise(endpointData.outputMembers.body);
+            responseReadyPromise.then( () => this._onProcessSuccess(endpointData).catch(errorMsg => this._onProcessError(endpointData,errorMsg)); 
         }
         else if(endpointData.outputMembers.trigger) {
-            var requestCompletedPromise = this._createMemberUpdatePromise(endpointData.outputs.trigger,false);
-            requestCompletedPromise.then(()) => this._onProcessSuccess()).catch(errorMsg => this._onProcessError(errorMsg));
+            var requestCompletedPromise = this._createMemberUpdatePromise(endpointData.outputMembers.trigger);
+            requestCompletedPromise.then( () => this._onProcessSuccess(endpointData).catch(errorMsg => this._onProcessError(endpointData,errorMsg));
         }
         else {
             //we should catch this error elsewhere, and not reach here
@@ -224,7 +224,7 @@ class WorkspaceHandler {
         response.writeHead(200, {"Content-Type":"text/plain"});
         
         //write the body, if applicable
-        if(endpointData.outputTables.body) {
+        if(endpointData.outputMembers.body) {
             var outputString = outputTable.getData();
             var responseBody = JSON.stringify(outputString);
             response.write(responseBody);
@@ -239,7 +239,7 @@ class WorkspaceHandler {
     
     /** This method will be called when the calculation has an error in the
      * output table. */
-    _onProcessError(errorMsg) {
+    _onProcessError(endpointData,errorMsg) {
         //send the error response
         utils.sendError(500,errorMsg);
         
@@ -317,12 +317,16 @@ class WorkspaceHandler {
                 }
                 //reject promise
                 memberUpdateEntry.promiseRejectFunction(errorMessage));
+                
+                //remove this entry!
+                delete memberUpdateEntries[member.getFullName()];
             }
             else {
                 //success!
-                //we have the option of getting data or not
-                var data = memberUpdateEntry.doReturnData ? member.getData() : undefined;
-                memberUpdateEntry.promiseResolveFunction(data);
+                memberUpdateEntry.promiseResolveFunction();
+                
+                //remove this entry!
+                delete memberUpdateEntries[member.getFullName()];
             }
         }
     }
@@ -332,7 +336,7 @@ class WorkspaceHandler {
      * member of the workspace is updated. 
      * NOTE - we are only allowing one entry for a given member at a time, which 
      * should be all we need. */
-    _createMemberUpdatePromise(member,doReturnData) {
+    _createMemberUpdatePromise(member) {
         
         //we are only allowing one entry - make sure there is not one here. For now we will just write a msg to console
         if(this.memberUpdateEntries[member.getFullName()] !== undefined) {
@@ -340,8 +344,6 @@ class WorkspaceHandler {
         }
         
         var memberUpdateEntry = {}
-        memberUpdateEntry.doReturnData = doReturnData;
-
         var memberUpdatePromise = new Promise(resolve,reject) {
             memberUpdateEntry.resolve = resolve;
             memberUpdateEntry.reject = reject;
