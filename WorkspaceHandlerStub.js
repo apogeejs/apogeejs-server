@@ -4,7 +4,8 @@ const { WorkspaceHandler } = require('./WorkspaceHandler');
 
 class WorkspaceHandlerStub {
     /** Constructor */
-    constructor(workspaceInfo,settings) {
+    constructor(workspacePathName,workspaceInfo,settings) {
+        this.workspacePathName = workspacePathName;
         this.workspaceInfo = workspaceInfo;
         this.settings = settings;
         this.handlers = []; //no handlers instantiated yet
@@ -46,11 +47,11 @@ class WorkspaceHandlerStub {
     /** This method returns true if this handler handles this request. */
     handles(pathname) {
         //path should be workspace name plus the endpoint name
-        return pathname.startsWith(this.workspaceInfo.name + "/");
+        return pathname.startsWith(this.workspacePathname + "/");
     }
     
     /** This method should be called to process a request. */
-    process(pathname,request,response) {
+    process(url,request,response) {
         //make sure the server is ready
         if(this.status != "ready") {
             utils.sendError(500,"Server endpoint not ready. Status = " + this.status,response);
@@ -61,13 +62,14 @@ class WorkspaceHandlerStub {
         var handlerPromise = getHandlerPromise(); 
         
         //remove the workspace name to get the endpoint path name. 
-        var endpointPathname = pathname.substring(this.workspaceInfo.name.length + 1);
+        var endpointPathname = url.pathname.substring(this.workspacePathName.length + 1);
+        var queryString = url.search;
         
         //process the request when ready
         //on error, we will give up, we should maybe see what the problem is and
         //get a new handler if this is just a problem with the particular handler
         handlerPromise
-                .then( handler => handler.process(endpointPathName,request,response));
+                .then( handler => handler.process(url,queryString,request,response));
                 .catch( errorMsg => utils.sendError(500,"Error handling request: " + errorMsg));
     }
     

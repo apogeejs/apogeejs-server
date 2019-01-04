@@ -50,7 +50,7 @@ class WorkspaceServer {
         var handlerStub = this.handlerStubs.find(handlerStub => handlerStub.handles(url.pathname));
         
         if(handlerStub) {
-            handlerStub.process(pathname,request,response);
+            handlerStub.process(url,request,response);
         }
         else {
             utils.sendError(403,"Workspace resource not found",response);

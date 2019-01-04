@@ -13,6 +13,7 @@ class WorkspaceHandler {
     constructor(workspaceInfo,settings) {
         
         //settings
+        this.workspacePathName = workspacePathName;
         this.workspaceInfo = workspaceInfo;
         this.settings = settings;
         
@@ -98,7 +99,7 @@ class WorkspaceHandler {
     }
     
     /** This method handles a request. */
-    process(endpointPathname,request,response) {
+    process(endpointPathname,queryString,request,response) {      
         
         //make sure we are ready
         if(this.status != WorkspaceHandler.STATUS_READY) {
@@ -146,7 +147,7 @@ class WorkspaceHandler {
         
         //get query params if applicable
         if(endpointData.inputMembers.queryTable) {
-            var queryJson = this.getQueryJson(request); 
+            var queryJson = this._getQueryJson(queryString); 
             var queryActionData = {};
 			queryActionData.action = "updateData";
             queryActionData.member = endpoint.inputMembers.queryTable;
@@ -290,6 +291,22 @@ class WorkspaceHandler {
         }
         
         return outputMemberMap;
+    }
+    
+    /** This returns a map of query keys to values. 
+     * multi values currently not supported. */
+    _getQueryJson(queryString) {
+        if(queryString) {
+            var queryEntryPairs = queryString.split("&").split("=");
+            var queryEntryMap = {};
+            queryEntryPairs.forEach(pair => {
+                queryEntryMap[pair[0]] = pair[1];
+            })
+            return queryEntryMap;
+        }
+        else {
+            return {};    
+        }
     }
     
     //-------------------------------
