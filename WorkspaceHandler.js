@@ -14,14 +14,14 @@ class WorkspaceHandler {
         this.status = "not initialized";
     }
     
-    /** This method initializes the handler, asynchronously. It returns a promise
-     * object that resovles when the handler is initiialized. */
+    /** This method initializes the handler with the workspace json. */
     init(workspaceJson) {
         //create the workspace
         var headlessWorkspaceJson = workspaceJson.workspace;
         this.workspace = new apogee.Workspace(headlessWorkspaceJson);
         
 //note - for node, workspace load should be synchronous? Double check this.
+//IF NOT SYNCHRONOUS - rename the method and return a promise
 //also check for load error!
         
         //create output listener
@@ -47,6 +47,7 @@ class WorkspaceHandler {
         this.status = ready;
     }
     
+    /** This method handles a request. */
     process(endpointPathname,request,response) {
         
         //endpointPathname should just be the endpoint name
@@ -97,6 +98,7 @@ class WorkspaceHandler {
     // Private Methods
     //===========================================
     
+    /** This method updates the input for the workspace for the given request. */
     doInputAction(inputUpdateActions) {
         var counpoundActionData = {};
         compountActionData.action = apogee.compoundaction.ACTION_NAME;

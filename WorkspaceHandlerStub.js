@@ -12,7 +12,7 @@ class WorkspaceHandlerStub {
     }
     
     /** This method must be called to initialize the handler. It
-     * is asynhcronous. A resquest will fail before the initialization is
+     * is asynchronous. A resquest will fail before the initialization is
      * complete.  */
     init() {
         //load the workspace
@@ -66,8 +66,10 @@ class WorkspaceHandlerStub {
     
     getHandlerPromise() {
         //for now just create a new one, and don't save it
-        var workspaceHandler = new WorkspaceHandler(this.workspaceInfo,this.settings,this.workspaceJson);
-        return workspaceHandler.initPromise();
+        var workspaceHandler = new WorkspaceHandler(this.workspaceInfo,this.settings);
+        workspaceHandler.init(this.workspaceJson);
+        //this handler should be ready, return it as a promise that resolves immediately
+        return Promise.resolve(workspaceHandler);
         
         //in the future we can return one from the list if one is available
         //or we have to wait until one is ready.
