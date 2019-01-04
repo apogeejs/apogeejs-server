@@ -20,7 +20,7 @@ class WorkspaceServer {
     
     /** This method starts up the server. Just call this once!*/
     startup(descriptor) {
-        if((!this.settings)||(!this.handlerStubs)) {
+        if((this.settings)||(this.handlerStubs)) {
             throw new Error("The server has already been initialized!");
         }
         if(!descriptor) {
@@ -87,9 +87,14 @@ class WorkspaceServer {
             throw new Error("Workspaces entry missing in descriptor!");
         }
         
-        for(var workspaceKey in descriptor.workspaces) {
-            var workspaceInfo = descriptor.workspaces[workspaceKey];
-            handlerStub.push(new WorkspaceHandlerStub(workspaceInfo,settings));
+        for(var workspacePathname in descriptor.workspaces) {
+            var workspaceInfo = descriptor.workspaces[workspacePathname];
+            var handlerStub = new WorkspaceHandlerStub(workspacePathname,workspaceInfo,settings);
+            
+            //this is asynchronous. It won't handle requests until it is finished
+            handlerStub.init();
+            
+            handlerStub.push(handlerStub);
         }
         
         return handlerStubs;

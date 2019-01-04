@@ -13,7 +13,6 @@ class WorkspaceHandler {
     constructor(workspaceInfo,settings) {
         
         //settings
-        this.workspacePathName = workspacePathName;
         this.workspaceInfo = workspaceInfo;
         this.settings = settings;
         
@@ -60,15 +59,15 @@ class WorkspaceHandler {
             for(var endpointName in this.workspaceInfo.endpoints) {
                 var endpointSettings = this.workspaceInfo.endpoints[endpointName];
                 var entpointData = {};
-                this.endpoints[endpointName] = endointData;
+                this.endpoints[endpointName] = endpointData;
 
                 //get the input tables
                 endpointData.inputMembers = this._loadMemberFromSettings(this.workspace,endpointData.inputs);
                 endpointData.outputMembers = this._loadMemberFromSettings(this.workspace,endpointData.outputs);
                 
-                //verify there is at least on input and output member
-                if((this.getCount(endpointData.inputMembers)==0)||(this.getCount(endpointData.outputMembers)==0)) {
-                    throw new Error("There must be at least one valid input and output table. Endpoint name = " + endpointName);
+                //verify there is at least on output member
+                if(this.getCount(endpointData.outputMembers)==0) {
+                    throw new Error("There must be at least one valid output table! Endpoint name = " + endpointName);
                 }
             }
 
@@ -81,7 +80,8 @@ class WorkspaceHandler {
                 var workspaceReadyPromise = this._createMemberUpdatePromise(rootFolder);
                 var workspaceGoodCallback = () => this._setStatusReady();
                 var workspaceErrorCallback = errMsg => this._setStatusError("error: initialization failed: " + errMsg);
-                return workspaceReadyPromise.then(workspaceGoodCallback).catch(workspaceErrorCallback).then(() => this.status);
+                var returnTheStatus = () => return this.status;
+                return workspaceReadyPromise.then(workspaceGoodCallback).catch(workspaceErrorCallback).then(returnTheStatus);
             }
             else {
                 //workspace ready
@@ -145,7 +145,7 @@ class WorkspaceHandler {
         //------------------------------------
         var inputUpdateActions = [];
         
-        //get query params if applicable
+        //get query params if applicable, write them below with all inputs together
         if(endpointData.inputMembers.queryTable) {
             var queryJson = this._getQueryJson(queryString); 
             var queryActionData = {};
@@ -181,9 +181,13 @@ class WorkspaceHandler {
             //set the input tables after body loaded
             this._doInputAction(inputUpdateActions);
         }
-        else {
-            //set the input tables now - no other data loaded
+        else if(endpointData.inputMembers.queryTable){
+            //the only input table is the query table - write that data 
             this._doInputAction(inputUpdateAction);
+        }
+        else {
+            //no input data or trigger - we just want to read from the workspace
+            this._onProcessSuccess(endpointData);
         }
        
     }
