@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title></title>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+		<script>
+  
+			
+			//////////////////////////////////////////////////////////////////////////////////////////////////
+			//post action
+			
+			var URL_BASE = "http://localhost:8888";
+			
+			function doRequest(url) {
+				var url = readUrl();
+				if(!url) return;
+				
+				var body = readBody();
+				request(url,onDownload,onFailure,"POST",body);
+			}
+			
+			function readUrl() {
+				var pathnameField = document.getElementById("pathname");
+				var path = pathnameField.value;
+				if(path.charAt(0) !== "/") {
+					alert("Path name must start with '/'.");
+					return undefined;
+				}
+				return URL_BASE + path;
+			}
+			
+			function readBody() {
+				var inputDataField = document.getElementById("inputData"); 
+				return inputDataField.value;		
+			}
+			
+			function onDownload(data) {
+				var outputDataField = document.getElementById("outputData");
+				outputDataField.value = data;
+			}
+			
+			function onFailure(msg) {
+				alert(msg);
+			}
+			
+			function request(url,onDownload,onFailure,httpMethod,body) {
+				var xmlhttp = new XMLHttpRequest();;
+
+				xmlhttp.onreadystatechange=function() {
+					var msg;
+					if (xmlhttp.readyState==4 && xmlhttp.status==200) {
+						onDownload(xmlhttp.responseText);
+					}
+					else if(xmlhttp.readyState==4  && xmlhttp.status >= 400)  {
+						msg = "Error in http request. Status: " + xmlhttp.status;
+						onFailure(msg);
+					}
+				}
+
+				xmlhttp.open(httpMethod,url,true);
+					
+				if(httpMethod == "POST") {
+					xmlhttp.setRequestHeader("Content-Type","text/plain");
+				}
+
+				xmlhttp.send(body);
+
+			}
+			
+			//end post action
+			////////////////////////////////////////////////////////////////////////////////////
+
+		</script>
+		<style>
+			.stepDiv {
+				background-color: lightgray;
+				outline: solid 1px gray;
+				padding: 10px;
+				margin: 10px;
+				display: table;
+			}
+		</style>
+	
+	</head>
+	<body>
+		<h1>Request</h1>
+		<div class="stepDiv">
+			<p>This is the body of the request.</p>
+			Path Field:<input id="pathname" type="text" value="/revenue"><br><br> 
+			Input Body:<br>
+			<textarea id="inputData" rows="5" cols="75">
+{
+	"initialYear": 2015,
+	"initialRevenue": 1000000,
+	"growthRate": 3,
+	"projectionCount": 10
+}			
+			</textarea><br>
+		</div>
+		<button onclick="doRequest()">Submit</button><br>
+		<div class="stepDiv">
+			<p>This is the body of the response.</p>
+			Output Body:<br>
+			<textarea id="outputData" rows="15" cols="75"></textarea><br>
+		</div>
+		
+	</body>
+</html>

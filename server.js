@@ -1,13 +1,26 @@
 var http = require("http");
 var router = require("./router");
 
-require("./debugHook");
+var { FileHandler } = require("./FileHandler");
+var { ApogeeHandler } = require("./ApogeeHandler");
 
-var fileHandler = require("./fileHandler");
-var deployHandler = require("./deployHandler");
-deployHandler.init(router);
+const FILE_ROOT = "file/";
+const APOGEE_DESCRIPTOR = "test/simple/descriptor.json";
+const PORT = 8888;
 
-router.addStartsWithEndpoint("/file",fileHandler.readFile);
-router.addEndpoint("/deploy",deployHandler.onDeploy);
 
-http.createServer(router.route).listen(8888);
+function init() {
+    //add a static file handler
+    var fileHandler = new FileHandler(FILE_ROOT);
+    router.addEndpoint("/file",fileHandler);
+
+    //add the apogee handler
+    var apogeeHandler = new ApogeeHandler();
+    apogeeHandler.init(APOGEE_DESCRIPTOR);
+    router.addEndpoint("/apogee",apogeeHandler);
+
+    //start server
+    http.createServer(router.route).listen(PORT);
+}
+
+setTimeout(init,2000);

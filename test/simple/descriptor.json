@@ -1,0 +1,17 @@
+{
+	"workspaces": {
+		"simple": {
+			"source": "test/simple/simpleWorkspace.json",
+			"endpoints": {
+				"inputNumber": {
+					"inputs": {
+						"body": "Model.inputNumber"
+					},
+					"outputs": {
+						"body": "Model.outputNumber"
+					}
+				}
+			}
+		}
+	}
+}

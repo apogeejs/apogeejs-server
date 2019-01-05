@@ -117,7 +117,7 @@ function processEndpointBody(headlessWorkspaceJson,inputTableName,inputTableStri
 			var actionResponse = apogee.action.doAction(actionData,false);        
 			if(!actionResponse.getSuccess()) {
 				//error executing action!
-				utils.sendError(500,actionResponse.getErrorMsg());
+				utils.sendError(500,actionResponse.getErrorMsg(),response);
 			}
 		}
 		

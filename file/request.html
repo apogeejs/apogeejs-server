@@ -5,29 +5,34 @@
 		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 		<script>
-  
 			
 			//////////////////////////////////////////////////////////////////////////////////////////////////
-			//post action
-			
-			var URL_BASE = "http://localhost:8888";
+			//request action
 			
 			function doRequest(url) {
 				var url = readUrl();
 				if(!url) return;
 				
 				var body = readBody();
-				request(url,onDownload,onFailure,"POST",body);
+                var method;
+                if((body)||(body.length > 0)) {
+                    method = "POST";
+                }
+                else {
+                    method = "GET";
+                    body = undefined;
+                }
+				request(url,onDownload,onFailure,method,body);
 			}
 			
 			function readUrl() {
-				var pathnameField = document.getElementById("pathname");
-				var path = pathnameField.value;
-				if(path.charAt(0) !== "/") {
-					alert("Path name must start with '/'.");
-					return undefined;
-				}
-				return URL_BASE + path;
+				var urlField = document.getElementById("url");
+				var url = urlField.value;
+                if(url.length == 0) {
+                    alert("Url must be filled in!");
+                    url = null;
+                }
+				return url;
 			}
 			
 			function readBody() {
@@ -45,7 +50,7 @@
 			}
 			
 			function request(url,onDownload,onFailure,httpMethod,body) {
-				var xmlhttp = new XMLHttpRequest();;
+				var xmlhttp = new XMLHttpRequest();
 
 				xmlhttp.onreadystatechange=function() {
 					var msg;
@@ -86,22 +91,16 @@
 	<body>
 		<h1>Request</h1>
 		<div class="stepDiv">
-			<p>This is the body of the request.</p>
-			Path Field:<input id="pathname" type="text" value="/revenue"><br><br> 
-			Input Body:<br>
-			<textarea id="inputData" rows="5" cols="75">
-{
-	"initialYear": 2015,
-	"initialRevenue": 1000000,
-	"growthRate": 3,
-	"projectionCount": 10
-}			
+			<p>This is the request. An empty body will be done as a GET and a none empty will be done as a POST.</p>
+			URL:<input id="url" type="text" size="50"><br><br> 
+			Body:<br>
+			<textarea id="inputData" rows="5" cols="75">		
 			</textarea><br>
 		</div>
 		<button onclick="doRequest()">Submit</button><br>
 		<div class="stepDiv">
-			<p>This is the body of the response.</p>
-			Output Body:<br>
+			<p>This is the response.</p>
+			Body:<br>
 			<textarea id="outputData" rows="15" cols="75"></textarea><br>
 		</div>
 		
