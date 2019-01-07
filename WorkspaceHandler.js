@@ -1,5 +1,8 @@
 var apogee = require('./apogee-npm-lib');
-var utils = require('./serviceUtils');
+const { Handler } = require('./Handler');
+
+//this defines some globals we will be needing
+require('./debugHook');
 
 /** This class handles the enpoints associate with a single apogee workspace. \
  * NOTES:
@@ -7,10 +10,11 @@ var utils = require('./serviceUtils');
  * -- timeout
  * -- too many iterations.
  * */
-class WorkspaceHandler {
+class WorkspaceHandler extends Handler {
     
     /** Constuctor. Takes the workspace info and the applicable server settings. */
     constructor(workspaceInfo,settings) {
+        super();
         
         //settings
         this.workspaceInfo = workspaceInfo;
@@ -27,19 +31,7 @@ class WorkspaceHandler {
         this.memberUpdateEntries = {};
         
         //these hold the status
-        this.status = WorkspaceHandler.NOT_READY;
-        this.statusMsg = null;
-    }
-    
-    /** This returns the status of the handler. */
-    getStatus() {
-        return this.status;
-    }
-    
-    /** This returns a status message, which should be set in the case 
-     * the status is WorkspaceHandler.STATUS_ERROR. */
-    getStatusMsg() {
-        return this.statusMsg;
+        this.setStatus(WorkspaceHandler.NOT_READY);
     }
     
     /** This method initializes the handler with the headless workspace json,
@@ -78,22 +70,22 @@ class WorkspaceHandler {
                 //watch root folder waiting for it to become ready
                 //after it is, set the status and return the resulting promise.
                 var workspaceReadyPromise = this._createMemberUpdatePromise(rootFolder);
-                var workspaceGoodCallback = () => this._setStatusReady();
-                var workspaceErrorCallback = errMsg => this._setStatusError("error: initialization failed: " + errMsg);
+                var workspaceGoodCallback = () => this.setStatusReady();
+                var workspaceErrorCallback = errMsg => this.setStatusError("error: initialization failed: " + errMsg);
                 var returnTheStatus = () => this.status;
                 return workspaceReadyPromise.then(workspaceGoodCallback).catch(workspaceErrorCallback).then(returnTheStatus);
             }
             else {
                 //workspace ready
                 //return a promise that resolves immediately
-                this._setStatus(WorkspaceHandler.STATUS_READY);
+                this.setStatus(WorkspaceHandler.STATUS_READY);
                 return Promise.resolve(this.status);
             }
         }
         catch(error) {
             //store the error status and return a promise that resolves immediately
             console.error(error.stack);
-            this._setStatusError(error.message);
+            this.setStatusError(error.message);
             return Promise.resolve(this.status);
         }
     }
@@ -102,21 +94,18 @@ class WorkspaceHandler {
     process(endpointPathname,queryString,request,response) {      
         
         //make sure we are ready
-        if(this.status != WorkspaceHandler.STATUS_READY) {
-            utils.sendError(500,"Endpoint in improper state: " + this.status,response);
-            return;
-        }
+        if(isHandlerNotReady(response)) return;
         
         //set status for being in use
-        this._setStatus(WorkspaceHandler.STATUS_BUSY);
+        this.setStatus(WorkspaceHandler.STATUS_BUSY);
         
         //endpointPathname should just be the endpoint name
         var endpointData = this.endpoints[endpointPathname];
         
         if(!endpointData) {
-            utils.sendError(403,"Endpoint Resource not found",response);
+            this.sendError(403,"Endpoint Resource not found",response);
             //we are ready = no cleanup needed
-            this._setStatus(WorkspaceHandler.STATUS_READY);
+            this.setStatus(WorkspaceHandler.STATUS_READY);
             return;
         }
         
@@ -133,10 +122,10 @@ class WorkspaceHandler {
         }
         else {
             //we should catch this error elsewhere, and not reach here
-            utils.sendError(403,"Bad endpoint configuration",response);
+            this.sendError(403,"Bad endpoint configuration",response);
             //we are ready = no cleanup needed
             //we will not mark this as an error status here
-            this._setStatus(WorkspaceHandler.STATUS_READY);
+            this.setStatus(WorkspaceHandler.STATUS_READY);
             return;
         }
  
@@ -158,7 +147,7 @@ class WorkspaceHandler {
         //set the input data (body or just load the trigger data)
         if(endpointData.inputMembers.body) {
             //write the body into the body table, when ready
-            utils.readBody(request,response, (request,response,body) => {
+            this.readBody(request,response, (request,response,body) => {
                 var bodyActionData = {};
                 bodyActionData.action = "updateData";
                 bodyActionData.member = endpointData.inputMembers.body;
@@ -195,7 +184,7 @@ class WorkspaceHandler {
     /** This should be called when this handler is being shutdown. */
     shutdown() {
         //no cleanup for now
-        this._setStatus(WorkspaceHandler.STATUS_NOT_READY);
+        this.setStatus(WorkspaceHandler.STATUS_SHUTDOWN);
     }
     
     //===========================================
@@ -219,7 +208,7 @@ class WorkspaceHandler {
         }
         else {
             //error executing action!
-            utils.sendError(500,actionResponse.getErrorMsg(),response);
+            this.sendError(500,actionResponse.getErrorMsg(),response);
         }  
     }
     
@@ -247,7 +236,7 @@ class WorkspaceHandler {
      * output table. */
     _onProcessError(response,endpointData,errorMsg) {
         //send the error response
-        utils.sendError(500,errorMsg,response);
+        this.sendError(500,errorMsg,response);
         
         //cleanup after request
         this._doCleanup();
@@ -256,7 +245,7 @@ class WorkspaceHandler {
     /** This prepares the handler to be used again. */
     _doCleanup() {
         //for now we are not reusing
-        this._setStatus(WorkspaceHandler.STATUS_NOT_READY);
+        this.setStatus(WorkspaceHandler.STATUS_NOT_READY);
         
         //when we do, we need to set the initial values back in the input tables
         //using the endpoint data, which we will need to pass in
@@ -273,16 +262,6 @@ class WorkspaceHandler {
             count++;
         }
         return count;
-    }
-    
-    _setStatus(status,statusMsg) {
-        this.status = status;
-        this.statusMsg = statusMsg;
-    }
-    
-    _setStatusError(statusMsg) {
-        this.status = WorkspaceHandler.STATUS_ERROR;
-        this.statusMsg = statusMsg;
     }
     
     /** This method loads the member objects from the paths from the settings. */
@@ -387,14 +366,5 @@ class WorkspaceHandler {
     
 }
 
-//status values
-WorkspaceHandler.STATUS_NOT_READY = "not ready";
-WorkspaceHandler.STATUS_READY = "ready";
-WorkspaceHandler.STATUS_BUSY = "busy";
-WorkspaceHandler.STATUS_ERROR = "error";
-WorkspaceHandler.STATUS_SHUTDOWN = "shutdown";
-
-
-   
 module.exports.WorkspaceHandler = WorkspaceHandler;
 

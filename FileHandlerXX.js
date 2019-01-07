@@ -1,18 +1,22 @@
 var fs = require('fs');
-var parser = require('url');
+const { Handler } = require('./Handler');
 
-class FileHandler {
+/** This is a handler that server static files. */
+class FileHandler extends Handler {
     
     /** The file root is the location of the folder that contains the
      * static files. */
     constructor(fileRoot) {
+        super();
+        
         this.fileRoot = fileRoot;
+        this.setStatus(Handler.STATUS_READY);
     }
     
     /** This method handles requests. The pathname given here is the excluding 
      * any parent directories. */
-    process(pathname,queryString,request,response) {
-        var path = this.fileRoot + pathname;
+    process(path,queryString,request,response) {
+        var filePath = this.fileRoot + path;
 
         var onData = function(err,data) {
             if(err) {
@@ -27,9 +31,11 @@ class FileHandler {
             response.end();
         }
 
-        fs.readFile(path,onData);      
+        fs.readFile(filePath,onData);      
 
     }    
 }
 
-exports.FileHandler = FileHandler;
+module.exports.createInstance = function(fileRoot) {
+    return new FileHandler(fileRoot);
+}
