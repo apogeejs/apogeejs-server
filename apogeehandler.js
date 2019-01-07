@@ -22,10 +22,10 @@ class ApogeeHandler extends ParentHandler {
     /** This method initializes the handler with the descriptor json. */
     init(descriptor) {
         try {
-            this.descriptor = JSON.parse(descriptorText); 
+            this.descriptor = descriptor; 
 
             //create settings instance
-            this.settings = this._loadSettings(this.descriptor);
+            this.settings = this._loadSettings(descriptor);
 
             //create handler stubs
             if(!descriptor.workspaces) {
@@ -39,7 +39,7 @@ class ApogeeHandler extends ParentHandler {
                 //this is asynchronous. It won't handle requests until it is finished
                 workspaceHandlerStub.init();
 
-                this.addChildhandler(workspacePathname,workspaceHandlerStub);
+                this.addChildHandler(workspacePathname,workspaceHandlerStub);
             }
 
             this.setStatus(Handler.STATUS_READY);

@@ -96,7 +96,6 @@ class Handler {
 Handler.STATUS_UNKOWN = "unknown";
 Handler.STATUS_NOT_READY = "not ready";
 Handler.STATUS_READY = "ready";
-Handler.STATUS_BUSY = "busy";
 Handler.STATUS_ERROR = "error";
 Handler.STATUS_SHUTDOWN = "shutdown";
 

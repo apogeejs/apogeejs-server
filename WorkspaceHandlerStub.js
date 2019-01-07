@@ -15,7 +15,7 @@ class WorkspaceHandlerStub extends Handler {
     }
     
     /** This method must be called to initialize the handler. It
-     * is asynchronous. A resquest will fail before the initialization is
+     * is asynchronous. A request will fail before the initialization is
      * complete.  */
     init() {
         //load the workspace json
@@ -43,7 +43,7 @@ class WorkspaceHandlerStub extends Handler {
         //nothing for now...
         
         //set status
-        this.status = "shutdown";
+        this.setStatus(Handler.STATUS_SHUTDOWN);
     }
     
     //====================================
@@ -52,7 +52,7 @@ class WorkspaceHandlerStub extends Handler {
     /** This stores the workspace json given the workspace file text. */
     _onWorkspaceRead(err,workspaceText) {
         if(err) {
-            this.status = "error: source data not loaded: " + err;
+            this.setErrorStatus("Source data not loaded: " + err);
         }
         else {
             var workspace = JSON.parse(workspaceText);
@@ -64,15 +64,16 @@ class WorkspaceHandlerStub extends Handler {
                 this.headlessWorkspaceJson = workspace;
             }
             else {
-                this.status = "error: improper workspace format";
+                this.setErrorStatus("Improper workspace format");
                 return;
             }
 
             if(this.headlessWorkspaceJson.version != WorkspaceHandlerStub.SUPPORTED_WORKSPACE_VERSION) {   
-                this.status = "error: improper workspace version. required: " + WorkspaceHandlerStub.SUPPORTED_WORKSPACE_VERSION + ", found: " + this.headlessWorkspaceJson.version;
+                this.setErrorStatus("Improper workspace version. Required: " + WorkspaceHandlerStub.SUPPORTED_WORKSPACE_VERSION + ", Found: " + this.headlessWorkspaceJson.version;
             }
             else {
-                this.status = "ready"
+                this.setStatus(Handler.STATUS_READY);
+                console.log("Apogee Workspace Handler Stub initialized.");
             }
         }
     }
@@ -80,7 +81,7 @@ class WorkspaceHandlerStub extends Handler {
     _getHandlerPromise() {
         //for now just create a new one, and don't save it
         var workspaceHandler = new WorkspaceHandler(this.workspaceInfo,this.settings);
-        var initPromise = workspaceHandler.initPromise(this.headlessWorkspaceJson);
+        var initPromise = workspaceHandler.init(this.headlessWorkspaceJson);
         
         var onWorkspaceInitReturn = status => {
             if(status == WorkspaceHandler.STATUS_READY) {

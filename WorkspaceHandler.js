@@ -31,14 +31,15 @@ class WorkspaceHandler extends Handler {
         this.memberUpdateEntries = {};
         
         //these hold the status
-        this.setStatus(WorkspaceHandler.NOT_READY);
+        this.setStatus(Handler.STATUS_NOT_READY);
     }
     
     /** This method initializes the handler with the headless workspace json,
      * which is the JSON representing the headless workspace, not the whole
      * workspace saved from the app, which includes UI info. 
-     * It returns a promise that resovles with the value of the handler status. */
-    initPromise(headlessWorkspaceJson) {
+     * It returns a promise that resovles with the value of the handler status
+     * once initailization is complete. */
+    init(headlessWorkspaceJson) {
         try {
             //create the workspace
             this.workspace = new apogee.Workspace(headlessWorkspaceJson);
@@ -78,7 +79,7 @@ class WorkspaceHandler extends Handler {
             else {
                 //workspace ready
                 //return a promise that resolves immediately
-                this.setStatus(WorkspaceHandler.STATUS_READY);
+                this.setStatus(Handler.STATUS_READY);
                 return Promise.resolve(this.status);
             }
         }
@@ -105,7 +106,7 @@ class WorkspaceHandler extends Handler {
         if(!endpointData) {
             this.sendError(403,"Endpoint Resource not found",response);
             //we are ready = no cleanup needed
-            this.setStatus(WorkspaceHandler.STATUS_READY);
+            this.setStatus(Handler.STATUS_READY);
             return;
         }
         
@@ -125,7 +126,7 @@ class WorkspaceHandler extends Handler {
             this.sendError(403,"Bad endpoint configuration",response);
             //we are ready = no cleanup needed
             //we will not mark this as an error status here
-            this.setStatus(WorkspaceHandler.STATUS_READY);
+            this.setStatus(Handler.STATUS_READY);
             return;
         }
  
@@ -184,7 +185,7 @@ class WorkspaceHandler extends Handler {
     /** This should be called when this handler is being shutdown. */
     shutdown() {
         //no cleanup for now
-        this.setStatus(WorkspaceHandler.STATUS_SHUTDOWN);
+        this.setStatus(Handler.STATUS_SHUTDOWN);
     }
     
     //===========================================
@@ -365,6 +366,9 @@ class WorkspaceHandler extends Handler {
     } 
     
 }
+
+//A new status for this handler
+WorkspaceHandler.STATUS_BUSY = "busy";
 
 module.exports.WorkspaceHandler = WorkspaceHandler;
 
