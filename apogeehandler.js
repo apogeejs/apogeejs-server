@@ -1,4 +1,5 @@
 var fs = require('fs');
+const { Handler } = require ('./Handler');
 const { ParentHandler } = require ('./ParentHandler');
 const { WorkspaceHandlerStub } = require('./WorkspaceHandlerStub');
 
@@ -34,7 +35,7 @@ class ApogeeHandler extends ParentHandler {
 
             for(var workspacePathname in descriptor.workspaces) {
                 var workspaceInfo = descriptor.workspaces[workspacePathname];
-                var workspaceHandlerStub = new WorkspaceHandlerStub(workspacePathname,workspaceInfo,settings);
+                var workspaceHandlerStub = new WorkspaceHandlerStub(workspaceInfo,this.settings);
 
                 //this is asynchronous. It won't handle requests until it is finished
                 workspaceHandlerStub.init();
@@ -108,7 +109,7 @@ module.exports.createInstance = function(descriptorFileLocation) {
         }  
     }
     
-    fs.readFile(descriptorPath,onDescriptorRead);
+    fs.readFile(descriptorFileLocation,onDescriptorRead);
     
     return instance;
 }

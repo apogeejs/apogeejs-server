@@ -6,7 +6,7 @@
 class Handler {
     
     /** Constructor. */
-    constuctor() {
+    constructor() {
         //these hold the status
         this.status = Handler.STATUS_UNKOWN;
         this.statusMsg = null;
@@ -48,23 +48,21 @@ class Handler {
     // Utilities
     //---------------------------
     
-    /** This method loads the request body. The callback onData should
-     * process the request
-     * - onData(request,response,body)
-     * If there is a read error, it is handled in this method. It doesn
-     * not need to be handled in onData. */
-    readBody(request,response,onData) {
+    /** This method returns a promise the resovles to the request body on success. */
+    readBodyPromise(request) {
         //read the body of the post
-        var lines = [];
-        request.on('data', function(chunk) {
-            lines.push(chunk);
-        })
-        request.on('end', function() {
-            var body = Buffer.concat(lines).toString();
-            onData(request,response,body);
-        });
-        request.on('error', function(err) {
-            sendError(500,err,response);
+        return new Promise( (resolve,reject) => {
+            var lines = [];
+            request.on('data', function(chunk) {
+                lines.push(chunk);
+            })
+            request.on('end', function() {
+                var body = Buffer.concat(lines).toString();
+                resolve(body);
+            });
+            request.on('error', function(err) {
+                reject(err);
+            });
         });
     }
     
@@ -84,7 +82,10 @@ class Handler {
     isHandlerNotReady(response) {
         if(this.status != Handler.STATUS_READY) {
             this.sendError(500,"Server endpoint not ready. Status = " + this.status,response);
-            return;
+            return true;
+        }
+        else {
+            return false;
         }
     }
     

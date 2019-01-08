@@ -6,13 +6,14 @@ var { ParentHandler } = require("./ParentHandler");
 //and processing requests.
 var handler = new ParentHandler();
 
-module.exports.addHandler = function(folderName,handler) {
-    handler.addChildHandler(folderName,handler);
+module.exports.addHandler = function(folderName,childHandler) {
+    handler.addChildHandler(folderName,childHandler);
 }
 
 module.exports.route = function(request,response) {
     var url = parser.parse(request.url,true);
-    var path = url.pathname;
+    //path for handle should not include leading '/'
+    var path = url.pathname.substring(1);
     var queryString = url.search;
 
     handler.process(path,queryString,request,response);
