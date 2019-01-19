@@ -69,7 +69,7 @@ class WorkspaceHandlerStub extends Handler {
             }
 
             if(this.headlessWorkspaceJson.version != WorkspaceHandlerStub.SUPPORTED_WORKSPACE_VERSION) {   
-                this.setErrorStatus("Improper workspace version. Required: " + WorkspaceHandlerStub.SUPPORTED_WORKSPACE_VERSION + ", Found: " + this.headlessWorkspaceJson.version;
+                this.setErrorStatus("Improper workspace version. Required: " + WorkspaceHandlerStub.SUPPORTED_WORKSPACE_VERSION + ", Found: " + this.headlessWorkspaceJson.version);
             }
             else {
                 this.setStatus(Handler.STATUS_READY);

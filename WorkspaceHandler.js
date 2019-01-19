@@ -64,6 +64,9 @@ class WorkspaceHandler extends Handler {
                 }
             }
 
+//we will probably move this to a sepatate function. We will also do the same check
+//when we reset the workspace after a calculation.
+
             //return - we are ready immediately or there is something asynchronous
             //happening. We can check the root folder to figure out which
             var rootFolder = this.workspace.getRoot();
