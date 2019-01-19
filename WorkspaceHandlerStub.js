@@ -26,10 +26,10 @@ class WorkspaceHandlerStub extends Handler {
     process(path,queryString,request,response) {
         
         //make sure we are ready
-        if(isHandlerNotReady(response)) return;
+        if(this.isHandlerNotReady(response)) return;
    
         //get a handler - we may have to wait for one to be available
-        var handlerPromise = this.getHandlerPromise(); 
+        var handlerPromise = this._getHandlerPromise(); 
         
         //process the request when ready
         //on error, we will give up, we should maybe see what the problem is and

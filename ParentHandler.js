@@ -38,7 +38,7 @@ class ParentHandler extends Handler {
     process(path,queryString,request,response) { 
         
         //make sure we are ready
-        if(isHandlerNotReady(response)) return;
+        if(this.isHandlerNotReady(response)) return;
 
         var folderNameLength = path.indexOf("/");
         if(folderNameLength > 0) {
@@ -52,10 +52,10 @@ class ParentHandler extends Handler {
                 return;
             }
         }
-        else {
-            this.sendError(403,"Endpoint Resource not found: " + path,response);
-            return;
-        }
+        
+        //if we get here, we couldn't honor the request
+        this.sendError(404,"Endpoint Resource not found: " + path,response);
+        return;
        
     }
     

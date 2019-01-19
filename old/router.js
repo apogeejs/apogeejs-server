@@ -21,8 +21,8 @@ exports.route = function(request,response) {
         }
     }
     
-	//if we didn't find the handler, return 403
-    response.writeHead(403,{"Content-Type": "text/plain"});
+	//if we didn't find the handler, return 404
+    response.writeHead(404,{"Content-Type": "text/plain"});
     response.write("Endpoint not found!");
     response.end();
 }

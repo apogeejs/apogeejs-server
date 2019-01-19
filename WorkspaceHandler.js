@@ -16,7 +16,7 @@ class WorkspaceHandler extends Handler {
     constructor(workspaceInfo,settings) {
         super();
         
-        //settings
+        //configuratino and settings
         this.workspaceInfo = workspaceInfo;
         this.settings = settings;
         
@@ -30,7 +30,6 @@ class WorkspaceHandler extends Handler {
         //react when a table of interest is updated.
         this.memberUpdateEntries = {};
         
-        //these hold the status
         this.setStatus(Handler.STATUS_NOT_READY);
     }
     
@@ -41,13 +40,19 @@ class WorkspaceHandler extends Handler {
      * once initailization is complete. */
     init(headlessWorkspaceJson) {
         try {
+            //-----------------------
+            // Initialize workspace instance
+            //-----------------------
+
             //create the workspace
             this.workspace = new apogee.Workspace(headlessWorkspaceJson);
 
             //add the member update listener
             this.workspace.addListener(apogee.updatemember.MEMBER_UPDATED_EVENT, member => this._onWorkspaceMemberUpdate(member));      
 
-            //for each endpoint, get the input and output tables
+            //-----------------------
+            // Initialize endpoint data structure
+            //-----------------------
             this.endpoints = {};
             for(var endpointName in this.workspaceInfo.endpoints) {
                 var endpointSettings = this.workspaceInfo.endpoints[endpointName];
@@ -57,34 +62,24 @@ class WorkspaceHandler extends Handler {
                 //get the input tables
                 endpointData.inputMembers = this._loadMemberFromSettings(this.workspace,endpointSettings.inputs);
                 endpointData.outputMembers = this._loadMemberFromSettings(this.workspace,endpointSettings.outputs);
-                
-                //verify there is at least on output member
-                if(this._getCount(endpointData.outputMembers)==0) {
-                    throw new Error("There must be at least one valid output table! Endpoint name = " + endpointName);
-                }
             }
 
-//we will probably move this to a sepatate function. We will also do the same check
-//when we reset the workspace after a calculation.
+            //--------------------------------
+            // Return promise for when workspace is ready
+            //--------------------------------
+            var workspaceReadyPromise = this._getWorkspaceReadyPromise();
 
-            //return - we are ready immediately or there is something asynchronous
-            //happening. We can check the root folder to figure out which
-            var rootFolder = this.workspace.getRoot();
-            if(rootFolder.getResultPending()) {
-                //watch root folder waiting for it to become ready
-                //after it is, set the status and return the resulting promise.
-                var workspaceReadyPromise = this._createMemberUpdatePromise(rootFolder);
-                var workspaceGoodCallback = () => this.setStatusReady();
-                var workspaceErrorCallback = errMsg => this.setStatusError("error: initialization failed: " + errMsg);
-                var returnTheStatus = () => this.status;
-                return workspaceReadyPromise.then(workspaceGoodCallback).catch(workspaceErrorCallback).then(returnTheStatus);
-            }
-            else {
-                //workspace ready
-                //return a promise that resolves immediately
+            //update the handler status when the workspace is ready
+            var workspaceGoodCallback = () => {
                 this.setStatus(Handler.STATUS_READY);
-                return Promise.resolve(this.status);
+                return this.getStatus();
             }
+            var workspaceErrorCallback = errMsg => {
+                this.setStatusError("error: initialization failed: " + errMsg);
+                return this.getStatus();
+            }
+            
+            return workspaceReadyPromise.then(workspaceGoodCallback).catch(workspaceErrorCallback);
         }
         catch(error) {
             //store the error status and return a promise that resolves immediately
@@ -98,7 +93,7 @@ class WorkspaceHandler extends Handler {
     process(endpointPathname,queryString,request,response) {      
         
         //make sure we are ready
-        if(isHandlerNotReady(response)) return;
+        if(this.isHandlerNotReady(response)) return;
         
         //set status for being in use
         this.setStatus(WorkspaceHandler.STATUS_BUSY);
@@ -107,82 +102,23 @@ class WorkspaceHandler extends Handler {
         var endpointData = this.endpoints[endpointPathname];
         
         if(!endpointData) {
-            this.sendError(403,"Endpoint Resource not found",response);
+            this.sendError(404,"Endpoint Resource not found",response);
             //we are ready = no cleanup needed
-            this.setStatus(Handler.STATUS_READY);
-            return;
-        }
-        
-        //-------------------------------
-        //configure the output change listener to react to request completion
-        //-------------------------------
-        if(endpointData.outputMembers.body) {
-            var responseReadyPromise = this._createMemberUpdatePromise(endpointData.outputMembers.body);
-            responseReadyPromise.then( () => this._onProcessSuccess(response,endpointData)).catch(errorMsg => this._onProcessError(response,endpointData,errorMsg)); 
-        }
-        else if(endpointData.outputMembers.trigger) {
-            var requestCompletedPromise = this._createMemberUpdatePromise(endpointData.outputMembers.trigger);
-            requestCompletedPromise.then( () => this._onProcessSuccess(response,endpointData)).catch(errorMsg => this._onProcessError(resposne,endpointData,errorMsg));
-        }
-        else {
-            //we should catch this error elsewhere, and not reach here
-            this.sendError(403,"Bad endpoint configuration",response);
-            //we are ready = no cleanup needed
-            //we will not mark this as an error status here
             this.setStatus(Handler.STATUS_READY);
             return;
         }
  
         //------------------------------------
-        //write the inputs
+        //write the inputs - create an array of promises for update instructions
         //------------------------------------
-        var inputUpdateActions = [];
-        
-        //get query params if applicable, write them below with all inputs together
-        if(endpointData.inputMembers.queryTable) {
-            var queryJson = this._getQueryJson(queryString); 
-            var queryActionData = {};
-			queryActionData.action = "updateData";
-            queryActionData.member = endpointData.inputMembers.queryTable;
-            queryActionData.data = queryJson;
-            inputUpdateActions.push(queryDataAction);
-        }
- 
-        //set the input data (body or just load the trigger data)
-        if(endpointData.inputMembers.body) {
-            //write the body into the body table, when ready
-            this.readBody(request,response, (request,response,body) => {
-                var bodyActionData = {};
-                bodyActionData.action = "updateData";
-                bodyActionData.member = endpointData.inputMembers.body;
-                bodyActionData.data = JSON.parse(body);
-                inputUpdateActions.push(bodyActionData);
-                
-                //set the input tables after body loaded
-                this._doInputAction(inputUpdateActions,response);
-            });
-        }
-        else if(endpointData.inputMembers.trigger) {
-            //just write canned value
-            var cannedValue = endpointData.inputTriggerValue ? endpointData.inputTriggerValue : true;
-            var triggerActionData = {};
-            triggerActionData.action = "updateData";
-            triggerActionData.member = endpointData.inputMembers.trigger;
-            triggerActionData.data = cannedValue;
-            inputUpdateActions.push(triggerActionData);
-                
-            //set the input tables after body loaded
-            this._doInputAction(inputUpdateActions,response);
-        }
-        else if(endpointData.inputMembers.queryTable){
-            //the only input table is the query table - write that data 
-            this._doInputAction(inputUpdateAction,response);
-        }
-        else {
-            //no input data or trigger - we just want to read from the workspace
-            this._onProcessSuccess(response,endpointData);
-        }
-       
+
+        //this is a list of promises, each giving the action data to update an input table
+        var inputUpdateActionPromises = this._loadInputUpdateActionPromises(endpointData,queryString,request);
+
+        //do the update action when the all inputs are completed
+        var handleInputUpdateLoad = inputUpdateActions => this._doInputAction(inputUpdateActions,endpointData,response)
+        var handleInputLoadError = err => this.sendError(500,"Error loading request body: " + err,response);
+        Promise.all(inputUpdateActionPromises).then(handleInputUpdateLoad).catch(handleInputLoadError);
     }
     
     /** This should be called when this handler is being shutdown. */
@@ -198,27 +134,94 @@ class WorkspaceHandler extends Handler {
     //----------------------------
     // Response Processing methods
     //----------------------------
+
+    /** This method loads the action data to update the input tables. It returns
+     * an array of promises, one for each table to update. */
+    _loadInputUpdateActionPromises(endpointData,queryString,request) {
+        //------------------------------------
+        //write the inputs - create an array of promises for update instructions
+        //------------------------------------
+        var inputUpdateActionPromises = [];
+        
+        //get query params if applicable
+        if(endpointData.inputMembers.queryTable) {
+            var queryJson = this._getQueryJson(queryString); 
+            var queryActionData = {};
+			queryActionData.action = "updateData";
+            queryActionData.member = endpointData.inputMembers.queryTable;
+            queryActionData.data = queryJson;
+
+            inputUpdateActionPromises.push(Promise.resolve(queryDataAction));
+        }
+
+        //get any input trigger table data, if applicable
+        if(endpointData.inputMembers.trigger) {
+            //just write canned value
+            var cannedValue = endpointData.inputTriggerValue ? endpointData.inputTriggerValue : true;
+            var triggerActionData = {};
+            triggerActionData.action = "updateData";
+            triggerActionData.member = endpointData.inputMembers.trigger;
+            triggerActionData.data = cannedValue;
+
+            inputUpdateActionPromises.push(Promise.resolve(triggerActionData));
+        }
+ 
+        //get the input request body data, if applicable
+        if(endpointData.inputMembers.body) {
+            //write the body into the body table, when ready
+            var bodyReadPromise = this.readBodyPromise(request);
+
+            var createBodyActionData = body => {
+                var bodyActionData = {};
+                bodyActionData.action = "updateData";
+                bodyActionData.member = endpointData.inputMembers.body;
+                bodyActionData.data = JSON.parse(body);
+                return bodyActionData;
+            }
+            
+            var bodyActionDataPromise = bodyReadPromise.then(createBodyActionData);
+            
+            inputUpdateActionPromises.push(bodyActionDataPromise);
+        }
+
+        return inputUpdateActionPromises;
+    }
     
     /** This method updates the input for the workspace for the given request. */
-    _doInputAction(inputUpdateActions,response) {
-        var compoundActionData = {};
-        compoundActionData.action = apogee.compoundaction.ACTION_NAME;
-        compoundActionData.workspace = this.workspace;
-        compoundActionData.actions = inputUpdateActions;
-        
-        var actionResponse = apogee.action.doAction(compoundActionData,false);        
-        if(actionResponse.getSuccess()) {
-            //let the output listener handle the result from here
+    _doInputAction(inputUpdateActions,endpointData,response) {
+            
+        if(inputUpdateActions.length > 0) {
+            //submit all these updates to the workspace
+            var compoundActionData = {};
+            compoundActionData.action = apogee.compoundaction.ACTION_NAME;
+            compoundActionData.workspace = this.workspace;
+            compoundActionData.actions = inputUpdateActions;
+            
+            var actionResponse = apogee.action.doAction(compoundActionData,false);        
+            if(actionResponse.getSuccess()) {
+                //let the output listener handle the result from here
+            }
+            else {
+                //error executing action!
+                this.sendError(500,actionResponse.getErrorMsg(),response);
+                return;
+            }  
         }
         else {
-            //error executing action!
-            this.sendError(500,actionResponse.getErrorMsg(),response);
-        }  
+            //no inputs to submit, just check result
+        }
+
+        //process output when the workspace is ready
+        var workspaceReadyPromise = this._getWorkspaceReadyPromise();
+
+        var handleResultSuccess = () => this._onProcessSuccess(endpointData,response);
+        var handleResultFailure = errorMsg => this._onProcessError(errorMsg,endpointData,response);
+        workspaceReadyPromise.then(handleResultSuccess).catch(handleResultFailure);
     }
     
     /** This method will be called when the the calculation completes and
      * the output table is ready. */
-    _onProcessSuccess(response,endpointData) {
+    _onProcessSuccess(endpointData,response) {
         
         response.writeHead(200, {"Content-Type":"text/plain"});
         
@@ -238,7 +241,7 @@ class WorkspaceHandler extends Handler {
     
     /** This method will be called when the calculation has an error in the
      * output table. */
-    _onProcessError(response,endpointData,errorMsg) {
+    _onProcessError(errorMsg,endpointData,response) {
         //send the error response
         this.sendError(500,errorMsg,response);
         
@@ -367,6 +370,35 @@ class WorkspaceHandler extends Handler {
 
         return memberUpdatePromise;
     } 
+
+    /** This method returns a promise that resolves when the workspace is 
+     * update to date with no errors, and rejects if the workspace has an error.
+     * It uses the status of the root folder.
+     */
+    _getWorkspaceReadyPromise() {
+        //return - we are ready immediately or there is something asynchronous
+        //happening. We can check the root folder to figure out which
+        var rootFolder = this.workspace.getRoot();
+        if(rootFolder.getResultPending()) {
+            //watch root folder waiting for it to become ready
+            //after it is, set the status and return the resulting promise.
+            var workspaceReadyPromise = this._createMemberUpdatePromise(rootFolder);
+            var returnTheStatus = () => this.status;
+            return workspaceReadyPromise
+        }
+        else {
+            //workspace ready
+            //return a promise that resolves immediately
+            if(rootFolder.hasError()) {
+                //workspace error - reject promise
+                return Promise.reject();
+            }
+            else {
+                //no workspace error - resolve promise
+                return Promise.resolve();
+            }
+        }
+    }
     
 }
 
