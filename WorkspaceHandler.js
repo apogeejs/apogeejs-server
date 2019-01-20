@@ -144,14 +144,14 @@ class WorkspaceHandler extends Handler {
         var inputUpdateActionPromises = [];
         
         //get query params if applicable
-        if(endpointData.inputMembers.queryTable) {
+        if(endpointData.inputMembers.queryParams) {
             var queryJson = this._getQueryJson(queryString); 
             var queryActionData = {};
 			queryActionData.action = "updateData";
-            queryActionData.member = endpointData.inputMembers.queryTable;
+            queryActionData.member = endpointData.inputMembers.queryParams;
             queryActionData.data = queryJson;
 
-            inputUpdateActionPromises.push(Promise.resolve(queryDataAction));
+            inputUpdateActionPromises.push(Promise.resolve(queryActionData));
         }
 
         //get any input trigger table data, if applicable
@@ -295,8 +295,11 @@ class WorkspaceHandler extends Handler {
     /** This returns a map of query keys to values. 
      * multi values currently not supported. */
     _getQueryJson(queryString) {
+        if(queryString.startsWith("?")) {
+            queryString = queryString.substring(1);
+        }
         if(queryString) {
-            var queryEntryPairs = queryString.split("&").split("=");
+            var queryEntryPairs = queryString.split("&").map(keyValuePair => keyValuePair.split("="));
             var queryEntryMap = {};
             queryEntryPairs.forEach(pair => {
                 queryEntryMap[pair[0]] = pair[1];

@@ -3,9 +3,10 @@
 		"simple": {
 			"source": "test/simple/simpleWorkspace.json",
 			"endpoints": {
-				"inputNumber": {
+				"processNumber": {
 					"inputs": {
-						"body": "Model.inputNumber"
+						"body": "Model.inputBody",
+						"queryParams": "Model.inputParams"
 					},
 					"outputs": {
 						"body": "Model.outputNumber"

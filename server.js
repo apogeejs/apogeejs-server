@@ -5,6 +5,7 @@ var apogeehandler = require("./apogeehandler");
 
 const FILE_ROOT = "file/";
 const APOGEE_DESCRIPTOR_LOCATION = "test/simple/descriptor.json";
+//const APOGEE_DESCRIPTOR_LOCATION = "test/other/descriptor.json";
 const PORT = 8888;
 
 //NOTE - delay is just so the debugger can start before I do any work

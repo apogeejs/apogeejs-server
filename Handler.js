@@ -33,7 +33,7 @@ class Handler {
     }
     
     setStatusError(statusMsg) {
-        this.status = WorkspaceHandler.STATUS_ERROR;
+        this.status = Handler.STATUS_ERROR;
         this.statusMsg = statusMsg;
     }
     
