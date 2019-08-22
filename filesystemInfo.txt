@@ -1,0 +1,49 @@
+Linus File System Convention:
+
+The /opt directory is a good location for the program distribution files. The /srv directory is used for the programs run-time data. (Please see the Filesystem Hierarchy Standard.) Unlike the /etc directory where the standard indicates that the /opt/<pkg> configuration files should be placed in /etc/opt/<pkg>, there is no standardization that /srv/opt/<pkg> should be a parallel structure (although it's probably not a bad idea).
+
+In summary:
+
+/opt/webserver/     (your node.js application)
+    server.js
+    package.json
+    node_modules/
+    ...
+
+/etc/opt/webserver/
+    config.json     (configuration file for your web server)
+
+/srv/opt/webserver/ (opt subdirectory suggested, but not required)
+    index.html
+    images/
+    css/
+    ...
+
+/var/opt/webserver
+    error.log
+    request.log
+Please keep in mind that this is the general case, and is not unique to express applicaitons.
+
+////////////////////////////////////////////////
+
+file/folder permissions
+(https://www.linux.com/tutorials/how-manage-file-and-folder-permissions-linux/)
+
+sudo chown -R bethany /DATA/SHARE
+ 
+
+Let’s break this down.
+
+sudo – admin rights must be used since we are dealing with a folder that belongs to another user
+
+chown – the command for changing ownership
+
+-R – the recursive switch to make sure all child objects get the same ownership changes
+
+bethany – the new owner of the folder
+
+/DATA/SHARE – the directory to be modified
+
+/////////////////////////////////////////////////////
+
+cert - create a self signed cert in open ssl. use https for the server.

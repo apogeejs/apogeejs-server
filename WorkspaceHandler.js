@@ -294,10 +294,11 @@ class WorkspaceHandler extends Handler {
     
     /** This returns a map of query keys to values. 
      * multi values currently not supported. */
-    _getQueryJson(queryString) {
-        if(queryString.startsWith("?")) {
+    _getQueryJson(queryString) {   
+        if((queryString)&&(queryString.startsWith("?"))) {
             queryString = queryString.substring(1);
-        }
+        }     
+
         if(queryString) {
             var queryEntryPairs = queryString.split("&").map(keyValuePair => keyValuePair.split("="));
             var queryEntryMap = {};
