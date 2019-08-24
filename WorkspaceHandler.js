@@ -75,7 +75,7 @@ class WorkspaceHandler extends Handler {
             //========================================================================================
             
             //return a promise that gives the status
-            return delay1.then(generateWorkspaceReadyPromise).then(setStatusFunction).catch(errorMsg => this.setStatusError(errorMsg)).then(() => this.status);
+            return delay10.then(generateWorkspaceReadyPromise).then(setStatusFunction).catch(errorMsg => this.setStatusError(errorMsg)).then(() => this.status);
         }
         catch(error) {
             //store the error status and return a promise that resolves immediately
@@ -137,7 +137,7 @@ class WorkspaceHandler extends Handler {
         //========================================================================================
 
         //here we execute the process
-        collectInputsPromise.then(setInputsFunction).then(generateDelay1).then(generateAwaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
+        collectInputsPromise.then(setInputsFunction).then(generateDelay10).then(generateAwaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
     }
     
     /** This should be called when this handler is being shutdown. */
