@@ -13,6 +13,34 @@
 					}
 				}
 			}
+		},
+		"delay": {
+			"source": "test/simple/delayWorkspace.json",
+			"endpoints": {
+				"processNumber": {
+					"inputs": {
+						"body": "Model.inputBody",
+						"queryParams": "Model.inputParams"
+					},
+					"outputs": {
+						"body": "Model.outputNumber"
+					}
+				}
+			}
+		},
+		"delay2": {
+			"source": "test/simple/delay2Workspace.json",
+			"endpoints": {
+				"processNumber": {
+					"inputs": {
+						"body": "Model.inputBody",
+						"queryParams": "Model.inputParams"
+					},
+					"outputs": {
+						"body": "Model.outputNumber"
+					}
+				}
+			}
 		}
 	}
 }

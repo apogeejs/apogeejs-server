@@ -63,11 +63,19 @@ class WorkspaceHandler extends Handler {
             //--------------------------------
             // Return promise for when workspace is ready, giving the handler status
             //--------------------------------
-            let workspaceReadyPromise = this._getWorkspaceReady();
-            let setStatusFunction = () => this._processReset();
+            let generateWorkspaceReadyPromise = () => this._getWorkspaceReadyPromise();
+            let setStatusFunction = () => this._setInitStatus();
+
+            //temporary workaround====================================================================
+            //in the current release I need this delay or else I will miss asynch messenger updates
+            //this should not be needed in the literate page releases
+            var delay10 = new Promise( (resolve,reject) => {
+                setTimeout(() => resolve(),10);
+            })
+            //========================================================================================
             
             //return a promise that gives the status
-            return workspaceReadyPromise.then(setStatusFunction).catch(errorMsg => this.setStatusError(errorMsg)).then(() => this.status);
+            return delay1.then(generateWorkspaceReadyPromise).then(setStatusFunction).catch(errorMsg => this.setStatusError(errorMsg)).then(() => this.status);
         }
         catch(error) {
             //store the error status and return a promise that resolves immediately
@@ -107,7 +115,7 @@ class WorkspaceHandler extends Handler {
         var setInputsFunction = inputData => this._loadInputData(inputData);
 
         //Here we wait for the workspace calculation to finish
-        var awaitCompletionPromise = this._getWorkspaceReady(endpointData);
+        var generateAwaitCompletionPromise = () => this._getWorkspaceReadyPromise(endpointData);
 
         //here we publis the result
         var processResultFunction = () => this._processResult(endpointData,response);
@@ -116,10 +124,20 @@ class WorkspaceHandler extends Handler {
         var handleExceptionsFunction = errorMsg => this.sendError(500,errorMsg,response);
 
         //this cleans up the workspace so it is ready to use again
-        var doCleanupFunction = () => this._doCleanup();
+        var doCleanupFunction = () => this._doCleanup(endpointData);
+
+        //temporary workaround====================================================================
+        //in the current release I need this delay or else I will miss asynch messenger updates
+        //this should not be needed in the literate page releases
+        var generateDelay10 = () => {
+            return new Promise( (resolve,reject) => {
+                setTimeout(() => resolve(),10);
+            })
+        }
+        //========================================================================================
 
         //here we execute the process
-        collectInputsPromise.then(setInputsFunction).then(awaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
+        collectInputsPromise.then(setInputsFunction).then(generateDelay1).then(generateAwaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
     }
     
     /** This should be called when this handler is being shutdown. */
@@ -191,7 +209,7 @@ class WorkspaceHandler extends Handler {
         //create an action for each input table we must set
         inputData.forEach(inputEntry => {
             let updateDataAction = {};
-            updateDataAction.action = "dataUpdate";
+            updateDataAction.action = "updateData";
             updateDataAction.member = inputEntry.member;
             updateDataAction.data = inputEntry.data;
             updateDataActions.push(updateDataAction);
@@ -200,6 +218,7 @@ class WorkspaceHandler extends Handler {
         var action;
         if(updateDataActions.length > 1) {
             //make a single compound action
+            action = {};
             action.action = apogee.compoundaction.ACTION_NAME;
             action.workspace = this.workspace;
             action.actions = updateDataActions;
@@ -224,12 +243,12 @@ class WorkspaceHandler extends Handler {
     
     /** This method resolves when the workspace calculation is ready - meaning anything other than pending.
      * Elsewhere we should handle the respose value. */
-    _getWorkspaceReady() {
+    _getWorkspaceReadyPromise() {
         //return - we are ready immediately or there is something asynchronous
         //happening. We can check the root folder to figure out which
         var rootFolder = this.workspace.getRoot();
 
-        if(rootFolder.getResultPending()) {
+        if((rootFolder.getResultPending())||(this.workspace.actionQueue.length > 0)) {
 
             //folder update will be asynchronous. Add a listener on apogee for this member
             //when not pending, resolve the promise
@@ -307,7 +326,7 @@ class WorkspaceHandler extends Handler {
     }
 
     /** This sets the handler status once it is initialized or reset. */
-    _processReset() {
+    _setInitStatus() {
         //we will check the status of the root folder
         let rootFolder = this.workspace.getRoot();
 
@@ -323,9 +342,9 @@ class WorkspaceHandler extends Handler {
 
     
     /** This prepares the handler to be used again. */
-    _doCleanup() {
+    _doCleanup(endpointData) {
 
-        if(1) {
+        if(0) {
             //for now we are not reusing
             this.setStatus(WorkspaceHandler.STATUS_NOT_READY);
         }
@@ -337,13 +356,21 @@ class WorkspaceHandler extends Handler {
             //and when the table is ready again, update the status.
 
             //set the initial values
-            this._loadInputData(endpoint.inputInitialValues);
+            this._loadInputData(endpointData.inputInitialValues);
             
             //when the workspace is ready, set the status
-            let resetCompletePromise = this._getWorkspaceReady();
-            let setStatusFunction = () => this._processReset();
+            let generateResetCompletePromise = () => this._getWorkspaceReadyPromise();
+            let setStatusFunction = () => this._setInitStatus();
 
-            resetCompletePromise.then(setStatusFunction).catch(errMsg => this.this.setStatusError(errorMsg));
+            //temporary workaround====================================================================
+            //in the current release I need this delay or else I will miss asynch messenger updates
+            //this should not be needed in the literate page releases
+            var delay10 = new Promise( (resolve,reject) => {
+                setTimeout(() => resolve(),10);
+            })
+            //========================================================================================
+
+            delay10.then(generateResetCompletePromise).then(setStatusFunction).catch(errMsg => this.this.setStatusError(errorMsg));
 
         }
     }
@@ -380,7 +407,8 @@ class WorkspaceHandler extends Handler {
         for(var memberKeyType in inputMembers) {
             var entry = {};
             entry.member = inputMembers[memberKeyType];
-            entry.data = member.getData();
+            entry.data = entry.member.getData();
+            initialValues.push(entry);
         }
         return initialValues;
     }
