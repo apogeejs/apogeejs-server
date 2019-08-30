@@ -1,9 +1,7 @@
 var fs = require('fs');
-const { Handler } = require ('./Handler');
-const { ParentHandler } = require ('./ParentHandler');
-const { WorkspaceHandlerStub } = require('./WorkspaceHandlerStub');
+const { WorkspaceManager } = require('./WorkspaceManager');
 
-class ApogeeHandler extends ParentHandler {
+class ApogeeManager {
     
     //================================
     // Public Methods
@@ -12,42 +10,32 @@ class ApogeeHandler extends ParentHandler {
     /** Constructor. Pass in the name for this handler, to be used in error messages
      * and such. It should typically be the path to this handler. 
      */
-    constructor() {
-        super();  
-        
+    constructor() {     
         this.descriptor = null;
         this.settings = null;
-        this.setStatus(Handler.STATUS_NOT_READY);
+        this.handlerStubs = {};
     }
     
     /** This method initializes the handler with the descriptor json. */
-    init(descriptor) {
-        try {
-            this.descriptor = descriptor; 
+    init(app,descriptor) {
+        this.descriptor = descriptor; 
 
-            //create settings instance
-            this.settings = this._loadSettings(descriptor);
+        //create settings instance
+        this.settings = this._loadSettings(descriptor);
 
-            //create handler stubs
-            if(!descriptor.workspaces) {
-                throw new Error("Workspaces entry missing in descriptor!");
-            }
-
-            for(var workspacePathname in descriptor.workspaces) {
-                var workspaceInfo = descriptor.workspaces[workspacePathname];
-                var workspaceHandlerStub = new WorkspaceHandlerStub(workspaceInfo,this.settings);
-
-                //this is asynchronous. It won't handle requests until it is finished
-                workspaceHandlerStub.init();
-
-                this.addChildHandler(workspacePathname,workspaceHandlerStub);
-            }
-
-            this.setStatus(Handler.STATUS_READY);
+        //create handler stubs
+        if(!descriptor.workspaces) {
+            throw new Error("Workspaces entry missing in descriptor!");
         }
-        catch(error) {
-            console.error(error.stack);
-             this.setStatusError(error.message);
+
+        for(var endpointName in descriptor.workspaces) {
+            var workspaceInfo = descriptor.workspaces[endpointName];
+            var workspaceManager = new WorkspaceManager(workspaceInfo,this.settings);
+
+            //this is asynchronous. It won't handle requests until it is finished
+            workspaceManager.initEndpoints(app);
+
+            this.handlerStubs(endpointName) = workspaceHandlerStub;
         }
     }
     
@@ -89,29 +77,30 @@ ApogeeHandler.GLOBAL_SETTINGS = {
 
 /** This method returns an Apogee instance, which will be asynchronously
  * initialized when the descriptor file is loaded. */
-module.exports.createInstance = function(descriptorFileLocation) {
-    var instance = new ApogeeHandler();
+module.exports.loadApogeeManager = function(app,descriptorFileLocation) {
+
+    var apogeeeManager = new ApogeeManager();
     
     var onDescriptorRead = (err,descriptorText) => {
         if(err) {
-            instance.setErrorStatus(err);
+            console.log("Error: Descriptor not read. " + err);
         }
         else {
             try {
                 var descriptor = JSON.parse(descriptorText);
-                instance.init(descriptor);
-                console.log("Apogee handler instance initialized");
+                console.log("Apogee descriptor loaded");
+                apogeeeManager.init(app,descriptor);               
             }
             catch(error) {
+                console.log("Error initializing endpoints");
                 console.error(error.stack);
-                instance.setStatusError(error.message);
             }
         }  
     }
     
     fs.readFile(descriptorFileLocation,onDescriptorRead);
     
-    return instance;
+    return apogeeeManager;
 }
 
 

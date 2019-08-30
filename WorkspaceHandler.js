@@ -1,5 +1,4 @@
 var apogee = require('./apogee-npm-lib');
-const { Handler } = require('./Handler');
 
 //this defines some globals we will be needing
 require('./debugHook');
@@ -10,7 +9,7 @@ require('./debugHook');
  * -- timeout
  * -- too many iterations.
  * */
-class WorkspaceHandler extends Handler {
+class WorkspaceHandler {
     
     /** Constuctor. Takes the workspace info and the applicable server settings. */
     constructor(workspaceInfo,settings) {
@@ -25,9 +24,41 @@ class WorkspaceHandler extends Handler {
         
         //this defines the endpoints serviced by this workspace
         this.endpoints = null;
-        
-        this.setStatus(Handler.STATUS_NOT_READY);
+
+        //these hold the status
+        this.status = WorkspaceHandler.STATUS_NOT_READY;
+        this.statusMsg = null;
     }
+
+    
+    //---------------------------
+    // Handler Status Methods
+    //---------------------------
+    
+    /** This returns the status of the handler. */
+    getStatus() {
+        return this.status;
+    }
+    
+    /** This returns a status message, which should be set in the case 
+     * the status is WorkspaceHandler.STATUS_ERROR. */
+    getStatusMsg() {
+        return this.statusMsg;
+    }
+    
+    setStatus(status,statusMsg) {
+        this.status = status;
+        this.statusMsg = statusMsg;
+    }
+    
+    setStatusError(statusMsg) {
+        this.status = WorkspaceHandler.STATUS_ERROR;
+        this.statusMsg = statusMsg;
+    }
+    
+    //--------------------
+    // Initialization
+    //--------------------
     
     /** This method initializes the handler with the headless workspace json,
      * which is the JSON representing the headless workspace, not the whole
@@ -43,13 +74,13 @@ class WorkspaceHandler extends Handler {
             //create the workspace
             this.workspace = new apogee.Workspace(headlessWorkspaceJson);  
             
-            //////////////////////////////////////
-            let requireEntry = {};
-            requireEntry.data = {};
-            requireEntry.data.require = require;
-            this.workspace.contextManager.addToContextList(requireEntry);
-
-            ///////////////////////////////////////
+//////////////////////////////////////
+//FIX THIS PROBLEM IN BETTER WAY
+let requireEntry = {};
+requireEntry.data = {};
+requireEntry.data.require = require;
+this.workspace.contextManager.addToContextList(requireEntry);
+///////////////////////////////////////
 
             //-----------------------
             // Initialize endpoint data structure
@@ -92,35 +123,43 @@ class WorkspaceHandler extends Handler {
             return Promise.resolve(this.status);
         }
     }
+
+    //--------------------
+    // Request Handler
+    //--------------------
     
     /** This method handles a request. */
-    process(endpointPathname,queryString,request,response) {      
+    handleRequest(endpointData,request,response) {      
         
-        //make sure we are ready
-        if(this.isHandlerNotReady(response)) return;
-        
+        //This shouldn't happen - but make sure we are ready
+        if(this.status != WorkspaceHandler.STATUS_READY) {
+            response.status(500).send("Unknown Error: endpoing not in ready state");
+            return;
+        }
+
         //set status for being in use
         this.setStatus(WorkspaceHandler.STATUS_BUSY);
         
-        //endpointPathname should just be the endpoint name
-        var endpointData = this.endpoints[endpointPathname];
-        
+        //load the endpoint data
+        var endpointData = this.endpoints[endpointName];
         if(!endpointData) {
-            this.sendError(404,"Endpoint Resource not found",response);
+            response.status(404).send("Endpoint Resource not found");
             //we are ready = no cleanup needed
-            this.setStatus(Handler.STATUS_READY);
+            this.setStatus(WorkspaceHandler.STATUS_READY);
             return;
         }
 
         //------------------------------------
-        // Execute the request
+        // Load the request
         //------------------------------------
  
-        //Here we get the input values to set in the workspace
-        var collectInputsPromise = this._getCreateInputsPromise(endpointData,queryString,request);
+        //load the input into the workspace
+        var inputData = this._getInputData(endpointData,request);
+        this._loadInputData(inputData);
 
-        //Here we set the input values
-        var setInputsFunction = inputData => this._loadInputData(inputData);
+        //-----------------------------------
+        // Get the response
+        //-----------------------------------
 
         //Here we wait for the workspace calculation to finish
         var generateAwaitCompletionPromise = () => this._getWorkspaceReadyPromise(endpointData);
@@ -129,7 +168,7 @@ class WorkspaceHandler extends Handler {
         var processResultFunction = () => this._processResult(endpointData,response);
 
         //this creates an error message if there was an exception anywhere in out processing
-        var handleExceptionsFunction = errorMsg => this.sendError(500,errorMsg,response);
+        var handleExceptionsFunction = errorMsg => response.status(500).send(errorMsg,);
 
         //this cleans up the workspace so it is ready to use again
         var doCleanupFunction = () => this._doCleanup(endpointData);
@@ -145,13 +184,13 @@ class WorkspaceHandler extends Handler {
         //========================================================================================
 
         //here we execute the process
-        collectInputsPromise.then(setInputsFunction).then(generateDelay10).then(generateAwaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
+        generateDelay10.then(generateAwaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
     }
     
     /** This should be called when this handler is being shutdown. */
     shutdown() {
         //no cleanup for now
-        this.setStatus(Handler.STATUS_SHUTDOWN);
+        this.setStatus(WorkspaceHandler.STATUS_SHUTDOWN);
     }
     
     //===========================================
@@ -164,7 +203,7 @@ class WorkspaceHandler extends Handler {
 
     /** This method loads the action data to update the input tables. It returns
      * an array of promises, one for each table to update. */
-    _getCreateInputsPromise(endpointData,queryString,request) {
+    _getInputData(endpointData,request) {
 
         //this array holds a list of member objects and the value we want to set for them
         var inputData = [];
@@ -173,7 +212,7 @@ class WorkspaceHandler extends Handler {
         if(endpointData.inputMembers.queryParams) {
             let entry = {};
             entry.member = endpointData.inputMembers.queryParams;
-            entry.data = this._getQueryJson(queryString); 
+            entry.data = request.query; 
             inputData.push(entry);
         }
 
@@ -189,24 +228,14 @@ class WorkspaceHandler extends Handler {
         //get the input request body data
         if(endpointData.inputMembers.body) {
             //write the body into the body table, when ready
-            var bodyReadPromise = this.readBodyPromise(request);
 
-            var createBodyEntry = body => {
-                let entry = {};
-                entry.member = endpointData.inputMembers.body;
-                entry.data = JSON.parse(body); 
-                inputData.push(entry);
-            }
-            
-            var bodyInputPromise = bodyReadPromise.then(createBodyEntry).then(() => inputData);
-            return bodyInputPromise;
+            let entry = {};
+            entry.member = endpointData.inputMembers.body;
+            entry.data = req.body; 
+            inputData.push(entry);
         }
-        else {
-            //no need to load body
-            //create a dumy promise
-            var noBodyInputPromise = Promise.resolve().then(() => inputData);
-            return noBodyInputPromise;
-        }
+       
+        return inputData;
     }
 
     /** This method updates the input for the workspace for the array of input data (data value and table object in each entry). */
@@ -299,38 +328,22 @@ class WorkspaceHandler extends Handler {
 
         if(statusMember.hasError()) {
             let errorMsg = "Error computing response: " + member.getErrorMsg();
-            this.sendError(500,errorMsg,response);
+            response.status(500).send(errorMsg);
         }
         else if(statusMember.getResultInvalid()) {
             //this shouldn't happen. Report an error
             let errorMsg = "Their was an unknown error computing the response. Response invalid.";
-            this.sendError(500,errorMsg,response);
+            response.status(500).send(errorMsg);
         }
         else if(statusMember.getResultPending()) {
             //this shouldn't happen - we should have rules this one out
             let errorMsg = "Their was an unknown error computing the response. Response still pending.";
-            this.sendError(500,errorMsg,response);
+            response.status(500).send(errorMsg);
         }
         else {
             //success
-            this._writeSuccessResponse(outputMember,response);
+            response.json(outputMember.getData());
         }  
-    }
-
-    /** This will write the response when the calcuation successfully completes. */
-    _writeSuccessResponse(outputMember,response) {
-        
-        response.writeHead(200, {"Content-Type":"text/plain"});
-        
-        //write the body, if applicable
-        if(outputMember) {
-            var outputJson = outputMember.getData();
-            var responseBody = JSON.stringify(outputJson);
-            response.write(responseBody);
-        }
-
-        //send response
-        response.end();
     }
 
     /** This sets the handler status once it is initialized or reset. */
@@ -352,7 +365,7 @@ class WorkspaceHandler extends Handler {
     /** This prepares the handler to be used again. */
     _doCleanup(endpointData) {
 
-        if(0) {
+        if(true) {
             //for now we are not reusing
             this.setStatus(WorkspaceHandler.STATUS_NOT_READY);
         }
@@ -420,31 +433,16 @@ class WorkspaceHandler extends Handler {
         }
         return initialValues;
     }
-
-    /** This returns a map of query keys to values. 
-     * multi values currently not supported. */
-    _getQueryJson(queryString) {  
-        //make sure there is no leading '?' 
-        if((queryString)&&(queryString.startsWith("?"))) {
-            queryString = queryString.substring(1);
-        }     
-
-        if(queryString) {
-            var queryEntryPairs = queryString.split("&").map(keyValuePair => keyValuePair.split("="));
-            var queryEntryMap = {};
-            queryEntryPairs.forEach(pair => {
-                queryEntryMap[pair[0]] = pair[1];
-            })
-            return queryEntryMap;
-        }
-        else {
-            return {};    
-        }
-    }
     
 }
 
 //A new status for this handler
+//status values
+WorkspaceHandler.STATUS_UNKOWN = "unknown";
+WorkspaceHandler.STATUS_NOT_READY = "not ready";
+WorkspaceHandler.STATUS_READY = "ready";
+WorkspaceHandler.STATUS_ERROR = "error";
+WorkspaceHandler.STATUS_SHUTDOWN = "shutdown";
 WorkspaceHandler.STATUS_BUSY = "busy";
 
 module.exports.WorkspaceHandler = WorkspaceHandler;
