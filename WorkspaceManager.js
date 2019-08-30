@@ -3,9 +3,7 @@ const { WorkspaceHandler } = require('./WorkspaceHandler');
 
 class WorkspaceManager {
     /** Constructor */
-    constructor(workspaceName,workspaceInfo,settings) {
-        super();
-        
+    constructor(workspaceName,workspaceInfo,settings) {      
         this.workspaceName = workspaceName;
         this.workspaceInfo = workspaceInfo;
         this.settings = settings;
@@ -16,9 +14,9 @@ class WorkspaceManager {
     /** This method initializes the endpoints for this workspace.  */
     initEndpoints(app) {
         //create endpoints for this workspace
-        for(var endpointName in workspaceInfo.endpoints) {
-            var handlerFunction = (request,response) => this._processEndpoint(endpointName,request,response);
-            var path = "/" + workspaceName + "/" + endpointName;
+        for(let endpointName in this.workspaceInfo.endpoints) {
+            let handlerFunction = (request,response) => this._processEndpoint(endpointName,request,response);
+            let path = "/" + this.workspaceName + "/" + endpointName;
             app.post(path,handlerFunction);
         }
 
@@ -52,13 +50,16 @@ class WorkspaceManager {
         //get a new handler if this is just a problem with the particular handler
         handlerPromise
                 .then( handler => handler.handleRequest(endpointName,request,response))
-                .catch( errorMsg => response.status(500).send("Error handling request: " + errorMsg,response));
+                .catch( error => {
+                    if(error.stack) console.error(error.stack);
+                    response.status(500).send("Error handling request: " + error.message);
+                });
     }
 
     /** This stores the workspace json given the workspace file text. */
     _onWorkspaceRead(err,workspaceText) {
         if(err) {
-            this._handleSetupError(("Source data not loaded: " + err);
+            this._handleSetupError("Source data not loaded: " + err);
         }
         else {
             var workspace = JSON.parse(workspaceText);
@@ -78,7 +79,6 @@ class WorkspaceManager {
                 this._handleSetupError("Improper workspace version. Required: " + WorkspaceManager.SUPPORTED_WORKSPACE_VERSION + ", Found: " + this.headlessWorkspaceJson.version);
             }
             else {
-                this.setStatus(Handler.STATUS_READY);
                 console.log("Apogee Workspace Ready: " + this.workspaceName);
             }
         }

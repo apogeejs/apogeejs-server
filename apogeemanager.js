@@ -28,14 +28,14 @@ class ApogeeManager {
             throw new Error("Workspaces entry missing in descriptor!");
         }
 
-        for(var endpointName in descriptor.workspaces) {
-            var workspaceInfo = descriptor.workspaces[endpointName];
-            var workspaceManager = new WorkspaceManager(workspaceInfo,this.settings);
+        for(let workspaceName in descriptor.workspaces) {
+            let workspaceInfo = descriptor.workspaces[workspaceName];
+            let workspaceManager = new WorkspaceManager(workspaceName,workspaceInfo,this.settings);
 
             //this is asynchronous. It won't handle requests until it is finished
             workspaceManager.initEndpoints(app);
 
-            this.handlerStubs(endpointName) = workspaceHandlerStub;
+            this.handlerStubs[workspaceName] = WorkspaceManager;
         }
     }
     
@@ -56,7 +56,7 @@ class ApogeeManager {
     /** This method creates the settings as the global settings with any overrides 
      * provided by the workspace descriptor. */
     _loadSettings(descriptor) {
-        var settings = Object.assign({},ApogeeHandler.GLOBAL_SETTINGS);
+        var settings = Object.assign({},ApogeeManager.GLOBAL_SETTINGS);
         
         if(descriptor.settings) {
             settings = Object.assign(settings,descriptor.settings);
@@ -68,7 +68,7 @@ class ApogeeManager {
 }
 
 /** Global settings */
-ApogeeHandler.GLOBAL_SETTINGS = {
+ApogeeManager.GLOBAL_SETTINGS = {
     maxHandlerCount: 5,
     maxWaitLifetimeMsec: 4*60*60*1000, //4 hours
     responseTimeoutMsec: 2*60*1000, //2 minutes

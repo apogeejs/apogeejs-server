@@ -13,8 +13,7 @@ class WorkspaceHandler {
     
     /** Constuctor. Takes the workspace info and the applicable server settings. */
     constructor(workspaceInfo,settings) {
-        super();
-        
+
         //configuration and settings
         this.workspaceInfo = workspaceInfo;
         this.settings = settings;
@@ -129,7 +128,7 @@ this.workspace.contextManager.addToContextList(requireEntry);
     //--------------------
     
     /** This method handles a request. */
-    handleRequest(endpointData,request,response) {      
+    handleRequest(endpointName,request,response) {      
         
         //This shouldn't happen - but make sure we are ready
         if(this.status != WorkspaceHandler.STATUS_READY) {
@@ -184,7 +183,7 @@ this.workspace.contextManager.addToContextList(requireEntry);
         //========================================================================================
 
         //here we execute the process
-        generateDelay10.then(generateAwaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
+        generateDelay10().then(generateAwaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
     }
     
     /** This should be called when this handler is being shutdown. */
@@ -231,7 +230,7 @@ this.workspace.contextManager.addToContextList(requireEntry);
 
             let entry = {};
             entry.member = endpointData.inputMembers.body;
-            entry.data = req.body; 
+            entry.data = request.body; 
             inputData.push(entry);
         }
        

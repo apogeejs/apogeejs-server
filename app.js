@@ -13,11 +13,13 @@ const app = express();
 app.use("/file",express.static("file"));
 
 //apogee endpoint initialization
-apogeeManager.init(app,APOGEE_DESCRIPTOR_LOCATION);
+const am = apogeeManager.loadApogeeManager(app,APOGEE_DESCRIPTOR_LOCATION);
 
 //============================
 // Start Listening (system might not be all up though)
 //============================
+
+app.use(express.json()) // for parsing application/json
 
 const port = getPort();
 app.listen(port, () => console.log(`Example app listening on port ${port}!`));
