@@ -4,8 +4,8 @@ var filehandler = require("./filehandler");
 var apogeehandler = require("./apogeehandler");
 
 const FILE_ROOT = "file/";
-const APOGEE_DESCRIPTOR_LOCATION = "test/simple/descriptor.json";
-//const APOGEE_DESCRIPTOR_LOCATION = "test/other/descriptor.json";
+const APOGEE_DESCRIPTOR_LOCATION = "deploy/descriptor.json";
+
 
 const PORT = getPort();
 console.log("Using port: " + PORT);
@@ -45,7 +45,7 @@ function getPort() {
     }
 
     //default port
-    return 8887;
+    return 30001;
 }
 
 setTimeout(init,2000);

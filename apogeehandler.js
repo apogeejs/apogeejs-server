@@ -47,7 +47,7 @@ class ApogeeHandler extends ParentHandler {
         }
         catch(error) {
             console.error(error.stack);
-             this.setErrorStatus(error.message);
+             this.setStatusError(error.message);
         }
     }
     
@@ -104,7 +104,7 @@ module.exports.createInstance = function(descriptorFileLocation) {
             }
             catch(error) {
                 console.error(error.stack);
-                instance.setErrorStatus(error.message);
+                instance.setStatusError(error.message);
             }
         }  
     }

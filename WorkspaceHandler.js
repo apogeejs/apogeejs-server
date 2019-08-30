@@ -41,7 +41,15 @@ class WorkspaceHandler extends Handler {
             //-----------------------
 
             //create the workspace
-            this.workspace = new apogee.Workspace(headlessWorkspaceJson);    
+            this.workspace = new apogee.Workspace(headlessWorkspaceJson);  
+            
+            //////////////////////////////////////
+            let requireEntry = {};
+            requireEntry.data = {};
+            requireEntry.data.require = require;
+            this.workspace.contextManager.addToContextList(requireEntry);
+
+            ///////////////////////////////////////
 
             //-----------------------
             // Initialize endpoint data structure
@@ -223,7 +231,7 @@ class WorkspaceHandler extends Handler {
             action.workspace = this.workspace;
             action.actions = updateDataActions;
         }
-        else if(updateDataActions.lenth == 0) {
+        else if(updateDataActions.length == 1) {
             action = updateDataActions[0];
         }
         else {

@@ -52,7 +52,7 @@ class WorkspaceHandlerStub extends Handler {
     /** This stores the workspace json given the workspace file text. */
     _onWorkspaceRead(err,workspaceText) {
         if(err) {
-            this.setErrorStatus("Source data not loaded: " + err);
+            this.setStatusError("Source data not loaded: " + err);
         }
         else {
             var workspace = JSON.parse(workspaceText);
@@ -64,12 +64,12 @@ class WorkspaceHandlerStub extends Handler {
                 this.headlessWorkspaceJson = workspace;
             }
             else {
-                this.setErrorStatus("Improper workspace format");
+                this.setStatusError("Improper workspace format");
                 return;
             }
 
             if(this.headlessWorkspaceJson.version != WorkspaceHandlerStub.SUPPORTED_WORKSPACE_VERSION) {   
-                this.setErrorStatus("Improper workspace version. Required: " + WorkspaceHandlerStub.SUPPORTED_WORKSPACE_VERSION + ", Found: " + this.headlessWorkspaceJson.version);
+                this.setStatusError("Improper workspace version. Required: " + WorkspaceHandlerStub.SUPPORTED_WORKSPACE_VERSION + ", Found: " + this.headlessWorkspaceJson.version);
             }
             else {
                 this.setStatus(Handler.STATUS_READY);
