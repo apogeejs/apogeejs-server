@@ -1,7 +1,7 @@
 const express = require('express');
-const apogeeManager = require("./apogeemanager");
+const {ApogeeManager} = require("./ApogeeManager");
 
-const FILE_ROOT = "file/";
+const FILE_ROOT = "/file";
 const APOGEE_DESCRIPTOR_LOCATION = "deploy/descriptor.json";
 
 //===========================
@@ -9,23 +9,41 @@ const APOGEE_DESCRIPTOR_LOCATION = "deploy/descriptor.json";
 //===========================
 const app = express();
 
+//--------------
 //file server
-app.use("/file",express.static("file"));
+//--------------
+app.use(FILE_ROOT,express.static("file"));
 
-//apogee endpoint initialization
-const am = apogeeManager.loadApogeeManager(app,APOGEE_DESCRIPTOR_LOCATION);
+//---------------
+//apogee server
+//---------------
 
-//============================
-// Start Listening (system might not be all up though)
-//============================
-
+//parse json body of requests
 app.use(express.json()) // for parsing application/json
 
+
+//apogee endpoint initialization
+const apogeeManager = new ApogeeManager();
+var initPromise = apogeeManager.getInitPromise(app,APOGEE_DESCRIPTOR_LOCATION);
+
+//---------------------
+// listener
+//---------------------
+
+//start listener after pogee initialization
 const port = getPort();
-app.listen(port, () => console.log(`Example app listening on port ${port}!`));
+var startListener = () => {
+    app.listen(port, () => console.log(`Example app listening on port ${port}!`));
+}
+
+let errorHandler = errorMsg => {
+    console.log("Server failed to start: " + errorMsg);
+} 
+
+initPromise.then(startListener).catch(errorHandler);
 
 //============================
-// Utilities
+// Utility Functions
 //============================
 
 function getPort() {

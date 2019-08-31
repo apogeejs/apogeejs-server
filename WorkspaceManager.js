@@ -1,27 +1,71 @@
 var fs = require('fs');
 const { WorkspaceHandler } = require('./WorkspaceHandler');
 
+//-------------------------------
+//debug
+DEBUG_NEXT_REQUEST_ID = 1;
+
+function getTimestamp() {
+    return new Date().toISOString();
+}
+//-------------------------------
+
 class WorkspaceManager {
     /** Constructor */
     constructor(workspaceName,workspaceInfo,settings) {      
         this.workspaceName = workspaceName;
         this.workspaceInfo = workspaceInfo;
         this.settings = settings;
-        this.headlessWorkspaceJson = null
-        this.handlers = []; //no handlers instantiated yet
+        this.headlessWorkspaceJson = null;
+
+        this.handlers = [];
+        this.requestQueue = [];
+
+        this.workspaceError = false;
     }
     
     /** This method initializes the endpoints for this workspace.  */
     initEndpoints(app) {
         //create endpoints for this workspace
         for(let endpointName in this.workspaceInfo.endpoints) {
-            let handlerFunction = (request,response) => this._processEndpoint(endpointName,request,response);
+            let handlerFunction = (request,response) => this._processRequest(endpointName,request,response);
             let path = "/" + this.workspaceName + "/" + endpointName;
             app.post(path,handlerFunction);
         }
 
         //load the workspace json
         fs.readFile(this.workspaceInfo.source, (err,workspaceText) => this._onWorkspaceRead(err,workspaceText));  //load from source  
+    }
+
+    /** This method is called when a handler changes to READY, ERROR or SHUTDOWN. Ity does not need to be called
+     * if the status goes to NOT_READY or BUSY. This is used to update our handler list and process our
+     * queued actions. This is done asynchronously. */
+    onHandlerStatus(handler) {
+        let handlerAction;
+
+        switch(handler.getStatus()) {
+            case WorkspaceHandler.STATUS_READY:
+                handlerAction = () => this._handlerReady(handler);
+                break;
+
+            case WorkspaceHandler.STATUS_ERROR:
+                handlerAction = () => this._handlerError(handler);
+                break;
+
+            case WorkspaceHandler.STATUS_SHUTDOWN:
+                handlerAction = () => this._handlerShutdown(handler);
+                break;
+
+            default:
+                //no op for other statuses
+                break;
+        }
+
+        //Do our handler action asynchronously
+        if(handlerAction) {
+            setTimeout(handlerAction,0);
+        }
+
     }
     
     shutdown() {
@@ -37,29 +81,46 @@ class WorkspaceManager {
     _handleSetupError(errorMsg) {
         //just print an error message
         console.log(errorMsg);
+        this.workspaceError = true;
     }
 
     /** This method should be called to process a request. */
-    _processEndpoint(endpointName,request,response) {
+    _processRequest(endpointName,request,response) {
 
-        //get a handler - we may have to wait for one to be available
-        var handlerPromise = this._getHandlerPromise(); 
+        let requestInfo = {};
+        requestInfo.endpointName = endpointName;
+        requestInfo.request = request;
+        requestInfo.response = response;
+        requestInfo.debugId = DEBUG_NEXT_REQUEST_ID++;
+
+        if(this.workspaceError) {
+            response.status(500).send("Workspace endpoints unavailable: " + this.workspaceName);
+            return;
+        }
         
-        //process the request when ready
-        //on error, we will give up, we should maybe see what the problem is and
-        //get a new handler if this is just a problem with the particular handler
-        handlerPromise
-                .then( handler => handler.handleRequest(endpointName,request,response))
-                .catch( error => {
-                    if(error.stack) console.error(error.stack);
-                    response.status(500).send("Error handling request: " + error.message);
-                });
+        let handler = this._getAvailableHandler();
+        if(handler) {
+console.log("DEBUG: " + getTimestamp() + ": Request with handler ready. Request=" + requestInfo.debugId + "; Handler=" + handler.debugId);
+            //if there is a handler available use it
+            handler.handleRequest(requestInfo);
+        }
+        else {
+console.log("DEBUG: " + getTimestamp() + ": Request queued. Request=" + requestInfo.debugId);
+
+            //otherwise queue this request
+            this._queueRequest(requestInfo);
+
+            //make a new handler if we need to
+            this._createNewHandlerIfNeeded();
+        }
+
     }
 
     /** This stores the workspace json given the workspace file text. */
     _onWorkspaceRead(err,workspaceText) {
         if(err) {
             this._handleSetupError("Source data not loaded: " + err);
+            return;
         }
         else {
             var workspace = JSON.parse(workspaceText);
@@ -80,31 +141,109 @@ class WorkspaceManager {
             }
             else {
                 console.log("Apogee Workspace Ready: " + this.workspaceName);
+
+                //see if we need to instantiate any handlers
+                this._createNewHandlerIfNeeded();
             }
+        }
+    }
+
+    //----------------------------------------
+    // Request Queue and Handler Cache Methods
+    //----------------------------------------
+
+    _getAvailableHandler() {
+        let availableHandler = this.handlers.find(handler => (handler.getStatus() == WorkspaceHandler.STATUS_READY));
+        return availableHandler;
+    }
+
+    _queueRequest(requestInfo) {
+        //queue the request
+        this.requestQueue.push(requestInfo);
+    }
+
+    /** This method will instantiate a new handler if one is needed. */
+    _createNewHandlerIfNeeded() {
+console.log("DEBUG: " + getTimestamp() + ": Create handler check. ");
+        //no creation if there is a workspace error
+        if(this.workspaceError) return;
+
+        let totalNumHandlers = this.handlers.length;
+
+        //get the number of handlers that are waiting to be ready
+        let numPendingHandlers = this.handlers.reduce( (count,handler) => {
+            return (handler.getStatus() == WorkspaceHandler.STATUS_NOT_READY) ? count+1 : count;
+        },0);
+
+        if(this.settings.createHandlersOnDemand) {
+            //do not cache handlers
+            //make handlers when requests come in
+            //keep the number of handlers equal to the number of requests waiting for a handler
+            if(numPendingHandlers < requestQueue.length) {
+                this._instantiateNewHandler();
+            }
+        }
+        else if(totalNumHandlers < this.settings.minHandlerCount) {
+            //cache handlers
+            //make a new handler if we are below the minimum
+            this._instantiateNewHandler();
+        }
+        else if(totalNumHandlers < this.settings.maxHandlerCount) {
+            //cache handlers
+            //make a new one if we are below the max and we have more waiting requests than pending handlers
+
+            //make a new handler if we are not at the maximum handler number and there are fewer handlers
+            //pending than there are queued requests
+            if(numPendingHandlers < this.requestQueue.length) {
+                this._instantiateNewHandler();
+            }
+        }
+    }
+
+    /** This makes a new handler. */
+    _instantiateNewHandler() {
+        let handler = new WorkspaceHandler(this,this.workspaceInfo,this.settings);
+
+        this.handlers.push(handler);
+        handler.init(this.headlessWorkspaceJson);
+
+        //see if we need to make any more handlers, but wait to do it
+        setTimeout(() => this._createNewHandlerIfNeeded(),this.settings.handlerSuccessiveCreateDelay);
+    }
+
+    /** When this method is called we check if a queued request needs a handler. */
+    _handlerReady(handler) {
+        if(this.requestQueue.length > 0) {
+            let requestInfo = this.requestQueue.shift();
+console.log("DEBUG: " + getTimestamp() + ": Handler ready for queued request. Request=" + requestInfo.debugId + "; Handler=" + handler.debugId);
+            handler.handleRequest(requestInfo);
         }
     }
     
-    _getHandlerPromise() {
-        //for now just create a new one, and don't save it
-        var workspaceHandler = new WorkspaceHandler(this.workspaceInfo,this.settings);
-        var initPromise = workspaceHandler.init(this.headlessWorkspaceJson);
-        
-        var onWorkspaceInitReturn = status => {
-            if(status == WorkspaceHandler.STATUS_READY) {
-                return workspaceHandler;
-            }
-            else {
-                throw new Error("Error loading handler. status = " + status);
-            }
-        }
-        
-        return initPromise.then(onWorkspaceInitReturn);
-        
-        //in the future we can return one from the list if one is available
-        //or we have to wait until one is ready.
+    /** When this method is called we will kill this handler. */
+    _handlerError(handler) {
+        this._removeHandler(handler);
+        handler.shutdown();
+    }
+    
+    /** When we get this request we need to make sure we don't trying to use this handler. */
+    _handlerShutdown(handler) {
+        this._removeHandler(handler);
+    }
+
+    /** This method removes a handler from the handler list. */
+    _removeHandler(handlerToRemove) {
+console.log("DEBUG: " + getTimestamp() + ": Remove handler: " + handlerToRemove.debugId);
+
+        //update the handler list, with this removed
+        this.handlers = this.handlers.filter( listHandler => (handlerToRemove !== listHandler));
+
+        //check if we need to make a new handler
+        this._createNewHandlerIfNeeded();
     }
 }
 
+//this is the supported version of the workspace.
 WorkspaceManager.SUPPORTED_WORKSPACE_VERSION = .2;
 
 module.exports.WorkspaceManager = WorkspaceManager;

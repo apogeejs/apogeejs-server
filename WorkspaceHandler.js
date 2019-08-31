@@ -3,6 +3,15 @@ var apogee = require('./apogee-npm-lib');
 //this defines some globals we will be needing
 require('./debugHook');
 
+//------------------------
+//debug
+let DEBUG_NEXT_HANDLER_ID = 1;
+
+function getTimestamp() {
+    return new Date().toISOString();
+}
+//------------------------
+
 /** This class handles the enpoints associate with a single apogee workspace. \
  * NOTES:
  * -We do not handle the following cases for now:
@@ -12,7 +21,13 @@ require('./debugHook');
 class WorkspaceHandler {
     
     /** Constuctor. Takes the workspace info and the applicable server settings. */
-    constructor(workspaceInfo,settings) {
+    constructor(workspaceManager, workspaceInfo,settings) {
+
+//this is for debug
+this.debugId = DEBUG_NEXT_HANDLER_ID++;
+console.log("DEBUG: " + getTimestamp() + ": Create new handler. " + this.debugId);
+
+        this.workspaceManager = workspaceManager;
 
         //configuration and settings
         this.workspaceInfo = workspaceInfo;
@@ -27,6 +42,13 @@ class WorkspaceHandler {
         //these hold the status
         this.status = WorkspaceHandler.STATUS_NOT_READY;
         this.statusMsg = null;
+
+        //initialize the lifetime variables
+        this.isExpired = false;
+        this.timer = null;
+        this.expiryTime
+        this.maxExpiryTime = Date.now() + this.settings.maxHandlerLifetimeMsec;
+        this._refreshHandlerExpiryTime();
     }
 
     
@@ -46,13 +68,26 @@ class WorkspaceHandler {
     }
     
     setStatus(status,statusMsg) {
+
+        //handle expired handler here if we are ready or in error state - shut the handler down
+        //if we are busy or not ready, just let it continue
+        if((this.isExpired)&&((status == this.workspaceManager.STATUS_READY)||(status == this.workspaceManager.STATUS_ERROR))) {
+            this.shutdown();
+            return;
+        }
+
+
+console.log("DEBUG: " + getTimestamp() + ": Set handler status. Handler=" + this.debugId + "; Status = " + status);
+
         this.status = status;
         this.statusMsg = statusMsg;
+
+        //notify of a status change
+        this.workspaceManager.onHandlerStatus(this);
     }
     
     setStatusError(statusMsg) {
-        this.status = WorkspaceHandler.STATUS_ERROR;
-        this.statusMsg = statusMsg;
+        this.setStatus(WorkspaceHandler.STATUS_ERROR,statusMsg);
     }
     
     //--------------------
@@ -107,13 +142,13 @@ this.workspace.contextManager.addToContextList(requireEntry);
             //temporary workaround====================================================================
             //in the current release I need this delay or else I will miss asynch messenger updates
             //this should not be needed in the literate page releases
-            var delay10 = new Promise( (resolve,reject) => {
-                setTimeout(() => resolve(),10);
+            var delay1 = new Promise( (resolve,reject) => {
+                setTimeout(() => resolve(),1);
             })
             //========================================================================================
             
             //return a promise that gives the status
-            return delay10.then(generateWorkspaceReadyPromise).then(setStatusFunction).catch(errorMsg => this.setStatusError(errorMsg)).then(() => this.status);
+            return delay1.then(generateWorkspaceReadyPromise).then(setStatusFunction).catch(errorMsg => this.setStatusError(errorMsg)).then(() => this.status);
         }
         catch(error) {
             //store the error status and return a promise that resolves immediately
@@ -128,25 +163,31 @@ this.workspace.contextManager.addToContextList(requireEntry);
     //--------------------
     
     /** This method handles a request. */
-    handleRequest(endpointName,request,response) {      
-        
+    handleRequest(requestInfo) {  
+
+        let request = requestInfo.request;
+        let response = requestInfo.response;
+       
         //This shouldn't happen - but make sure we are ready
         if(this.status != WorkspaceHandler.STATUS_READY) {
             response.status(500).send("Unknown Error: endpoing not in ready state");
             return;
         }
 
-        //set status for being in use
-        this.setStatus(WorkspaceHandler.STATUS_BUSY);
-        
         //load the endpoint data
-        var endpointData = this.endpoints[endpointName];
+        var endpointData = this.endpoints[requestInfo.endpointName];
         if(!endpointData) {
             response.status(404).send("Endpoint Resource not found");
-            //we are ready = no cleanup needed
+            //we are ready = no cleanup needed, reset the status though
             this.setStatus(WorkspaceHandler.STATUS_READY);
             return;
         }
+
+        //set status for being in use
+        this.setStatus(WorkspaceHandler.STATUS_BUSY);
+
+        //refresh the lifetime for this handler
+        this._refreshHandlerExpiryTime();
 
         //------------------------------------
         // Load the request
@@ -175,19 +216,24 @@ this.workspace.contextManager.addToContextList(requireEntry);
         //temporary workaround====================================================================
         //in the current release I need this delay or else I will miss asynch messenger updates
         //this should not be needed in the literate page releases
-        var generateDelay10 = () => {
+        var generateDelay1 = () => {
             return new Promise( (resolve,reject) => {
-                setTimeout(() => resolve(),10);
+                setTimeout(() => resolve(),1);
             })
         }
         //========================================================================================
 
         //here we execute the process
-        generateDelay10().then(generateAwaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
+        generateDelay1().then(generateAwaitCompletionPromise).then(processResultFunction).catch(handleExceptionsFunction).then(doCleanupFunction);
     }
     
     /** This should be called when this handler is being shutdown. */
     shutdown() {
+        if(this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
+
         //no cleanup for now
         this.setStatus(WorkspaceHandler.STATUS_SHUTDOWN);
     }
@@ -364,9 +410,9 @@ this.workspace.contextManager.addToContextList(requireEntry);
     /** This prepares the handler to be used again. */
     _doCleanup(endpointData) {
 
-        if(true) {
+        if((this.settings.createHandlersOnDemand)||(this.isExpired)) {
             //for now we are not reusing
-            this.setStatus(WorkspaceHandler.STATUS_NOT_READY);
+            this.shutdown();
         }
         else {
             //this is for is we do reuse the workspace
@@ -385,12 +431,12 @@ this.workspace.contextManager.addToContextList(requireEntry);
             //temporary workaround====================================================================
             //in the current release I need this delay or else I will miss asynch messenger updates
             //this should not be needed in the literate page releases
-            var delay10 = new Promise( (resolve,reject) => {
-                setTimeout(() => resolve(),10);
+            var delay1 = new Promise( (resolve,reject) => {
+                setTimeout(() => resolve(),1);
             })
             //========================================================================================
 
-            delay10.then(generateResetCompletePromise).then(setStatusFunction).catch(errMsg => this.this.setStatusError(errorMsg));
+            delay1.then(generateResetCompletePromise).then(setStatusFunction).catch(errMsg => this.this.setStatusError(errorMsg));
 
         }
     }
@@ -432,12 +478,49 @@ this.workspace.contextManager.addToContextList(requireEntry);
         }
         return initialValues;
     }
+
+    /** This will refresh the timeout for this handler. */
+    _refreshHandlerExpiryTime() {
+
+        //clear the old timer
+        if(this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
+        //find the new expiry time
+        let now = Date.now();
+        this.expiryTime = now + this.settings.maxHandlerUnusedLifetimeMsec;
+        if(this.expiryTime > this.maxExpiryTime) this.expiryTime = this.maxExpiryTime;
+console.log("DEBUG: " + getTimestamp() + ": Refresh expiry time. Handler=" + this.debugId + "; Expiry=" + new Date(this.expiryTime).toISOString());
+        //use a timer to check for expiry, with a little extra padding time
+        const checkDelayMsec = this.expiryTime - now + WorkspaceHandler.TIMEOUT_PADDING_MSEC;
+        this.timer = setTimeout(() => this._checkHandlerExpiryTime(),checkDelayMsec);
+    }
+
+    /** This method checks if we have expired. If we get here, we should have expired, but in case not we restart the timer. */
+    _checkHandlerExpiryTime() {
+        var timeToExpiry = this.expiryTime - Date.now();
+        if(timeToExpiry <= 0) {
+            //we have timed out
+            this.timer = null;
+            this.isExpired = true;
+console.log("DEBUG: " + getTimestamp() + ": Handler expired. Handler=" + this.debugId);
+
+            //if we are in an error state or the redy state, we can shutdown. Otherwise wait until we can shut down.
+            if((this.status == WorkspaceHandler.STATUS_READY)||(this.status == WorkspaceHandler.STATUS_READY)) {
+                this.shutdown();
+            }
+        }
+        else {
+            this.timer = setTimeout(() => this._checkHandlerExpiryTime(),timeToExpiry + WorkspaceHandler.TIMEOUT_PADDING_MSEC);
+        }
+    }
     
 }
 
-//A new status for this handler
+WorkspaceHandler.TIMEOUT_PADDING_MSEC = 10;
+
 //status values
-WorkspaceHandler.STATUS_UNKOWN = "unknown";
 WorkspaceHandler.STATUS_NOT_READY = "not ready";
 WorkspaceHandler.STATUS_READY = "ready";
 WorkspaceHandler.STATUS_ERROR = "error";

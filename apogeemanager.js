@@ -10,40 +10,53 @@ class ApogeeManager {
     /** Constructor. Pass in the name for this handler, to be used in error messages
      * and such. It should typically be the path to this handler. 
      */
-    constructor() {     
+    constructor() {  
         this.descriptor = null;
         this.settings = null;
         this.handlerStubs = {};
     }
     
     /** This method initializes the handler with the descriptor json. */
-    init(app,descriptor) {
-        this.descriptor = descriptor; 
+    getInitPromise(app,descriptorFileLocation) {
 
-        //create settings instance
-        this.settings = this._loadSettings(descriptor);
+        var initPromise = new Promise( (resolve,reject) => {
+            //callback for the descriptor
+            var onDescriptorRead = (err,descriptorText) => {
+                if(err) {
+                    let errorMsg = "Error: Descriptor not read. " + err;
+                    reject(errorMsg);
+                }
+                else {
+                    try {
+                        var descriptor = JSON.parse(descriptorText);
+                        console.log("Apogee descriptor loaded");
+                        this._initEndpoints(app,descriptor);
+                        resolve();               
+                    }
+                    catch(error) {
+                        let errorMsg = "Error initializing endpoints";
+                        console.error(error.stack);
+                        reject(errorMsg);
+                    }
+                }  
+            }
+            
+            //read the descriptor
+            try {
+                fs.readFile(descriptorFileLocation,onDescriptorRead);
+            }
+            catch(error) {
+                let errorMsg = "Error reading descriptor";
+                console.error(error.stack);
+                reject(errorMsg);
+            }
+        });
 
-        //create handler stubs
-        if(!descriptor.workspaces) {
-            throw new Error("Workspaces entry missing in descriptor!");
-        }
-
-        for(let workspaceName in descriptor.workspaces) {
-            let workspaceInfo = descriptor.workspaces[workspaceName];
-            let workspaceManager = new WorkspaceManager(workspaceName,workspaceInfo,this.settings);
-
-            //this is asynchronous. It won't handle requests until it is finished
-            workspaceManager.initEndpoints(app);
-
-            this.handlerStubs[workspaceName] = WorkspaceManager;
-        }
+        return initPromise;
     }
     
     /** This method should be called to shut down the server. */
     shutdown() {
-        
-        this.setStatus(Handler.STATUS_SHUTDOWN);
-        
         //this doesn't actually shutdown server right now
         this.handlerStubs.forEach(handlerStub => handlerStub.shutdown());
         this.handlerStubs = [];
@@ -53,13 +66,37 @@ class ApogeeManager {
     // Private Methods
     //================================
    
+    /** This method initialized the endpoints.  */
+    _initEndpoints(app,descriptor) {
+        this.descriptor = descriptor; 
+
+        //create settings instance
+        
+
+        //create handler stubs
+        if(!descriptor.workspaces) {
+            throw new Error("Workspaces entry missing in descriptor!");
+        }
+
+        for(let workspaceName in descriptor.workspaces) {
+            let workspaceInfo = descriptor.workspaces[workspaceName];
+            let workspaceSettings = this._loadSettings(workspaceInfo);
+            let workspaceManager = new WorkspaceManager(workspaceName,workspaceInfo,workspaceSettings);
+
+            //this is asynchronous. It won't handle requests until it is finished
+            workspaceManager.initEndpoints(app);
+
+            this.handlerStubs[workspaceName] = WorkspaceManager;
+        }
+    }
+
     /** This method creates the settings as the global settings with any overrides 
      * provided by the workspace descriptor. */
-    _loadSettings(descriptor) {
+    _loadSettings(workspaceInfo) {
         var settings = Object.assign({},ApogeeManager.GLOBAL_SETTINGS);
         
-        if(descriptor.settings) {
-            settings = Object.assign(settings,descriptor.settings);
+        if(workspaceInfo.settings) {
+            settings = Object.assign(settings,workspaceInfo.settings);
         } 
         
         return settings;
@@ -69,38 +106,18 @@ class ApogeeManager {
 
 /** Global settings */
 ApogeeManager.GLOBAL_SETTINGS = {
-    maxHandlerCount: 5,
-    maxWaitLifetimeMsec: 4*60*60*1000, //4 hours
-    responseTimeoutMsec: 2*60*1000, //2 minutes
-    maxResponseIterations: 50 //50 distinct actions? - set to more if workspace uses a lot of these
+    maxHandlerCount: 4, 
+    minHandlerCount: 1,
+    handlerSuccessiveCreateDelay: 5000, //we will delay between repeated checks to make new handlers
+    maxHandlerUnusedLifetimeMsec: 2*60*60*1000, //2 hours
+    maxHandlerLifetimeMsec: 4*60*60*1000, //4 hours
+    responseTimeoutMsec: 2*60*1000, //2 minutes NOT IMPLMENTED!
+    maxResponseIterations: 50 //this is a limit on iterative calculations (apogee messenger). In some cases this may be too small.
 }
 
 /** This method returns an Apogee instance, which will be asynchronously
  * initialized when the descriptor file is loaded. */
-module.exports.loadApogeeManager = function(app,descriptorFileLocation) {
+module.exports.ApogeeManager = ApogeeManager;
 
-    var apogeeeManager = new ApogeeManager();
-    
-    var onDescriptorRead = (err,descriptorText) => {
-        if(err) {
-            console.log("Error: Descriptor not read. " + err);
-        }
-        else {
-            try {
-                var descriptor = JSON.parse(descriptorText);
-                console.log("Apogee descriptor loaded");
-                apogeeeManager.init(app,descriptor);               
-            }
-            catch(error) {
-                console.log("Error initializing endpoints");
-                console.error(error.stack);
-            }
-        }  
-    }
-    
-    fs.readFile(descriptorFileLocation,onDescriptorRead);
-    
-    return apogeeeManager;
-}
 
 
