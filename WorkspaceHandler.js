@@ -1,8 +1,6 @@
-var apogee = require('./apogee-npm-lib');
+//var apogee = require('./apogee-npm-lib');
+var {Workspace, doAction} = require('./apogeeCorelib.js');
 const { Handler } = require('./Handler');
-
-//this defines some globals we will be needing
-require('./debugHook');
 
 /** This class handles the enpoints associate with a single apogee workspace. \
  * NOTES:
@@ -41,13 +39,17 @@ class WorkspaceHandler extends Handler {
             //-----------------------
 
             //create the workspace
-            this.workspace = new apogee.Workspace(headlessWorkspaceJson);  
+            this.workspace = new Workspace();  
+            let actionResponse = this.workspace.loadFromJson(headlessWorkspaceJson); 
+            //I believe this is not proper error handling
+            if(!actionResponse.actionDone) throw new Error(actionResponse.alertMsg);
             
             //////////////////////////////////////
             let requireEntry = {};
             requireEntry.data = {};
             requireEntry.data.require = require;
-            this.workspace.contextManager.addToContextList(requireEntry);
+            let contextManager = this.workspace.getContextManager();
+            contextManager.addToContextList(requireEntry);
 
             ///////////////////////////////////////
 
@@ -72,7 +74,10 @@ class WorkspaceHandler extends Handler {
             // Return promise for when workspace is ready, giving the handler status
             //--------------------------------
             let generateWorkspaceReadyPromise = () => this._getWorkspaceReadyPromise();
-            let setStatusFunction = () => this._setInitStatus();
+            let setStatusFunction = () => {
+                let returnValue = this._setInitStatus();
+                return returnValue;
+            }
 
             //temporary workaround====================================================================
             //in the current release I need this delay or else I will miss asynch messenger updates
@@ -83,7 +88,11 @@ class WorkspaceHandler extends Handler {
             //========================================================================================
             
             //return a promise that gives the status
-            return delay10.then(generateWorkspaceReadyPromise).then(setStatusFunction).catch(errorMsg => this.setStatusError(errorMsg)).then(() => this.status);
+            return delay10.then(generateWorkspaceReadyPromise).then(setStatusFunction).catch(errorMsg => {
+                this.setStatusError(errorMsg) 
+            }).then(() => {
+                return this.status;
+            });
         }
         catch(error) {
             //store the error status and return a promise that resolves immediately
@@ -218,7 +227,7 @@ class WorkspaceHandler extends Handler {
         inputData.forEach(inputEntry => {
             let updateDataAction = {};
             updateDataAction.action = "updateData";
-            updateDataAction.member = inputEntry.member;
+            updateDataAction.memberName = inputEntry.member.getFullName();
             updateDataAction.data = inputEntry.data;
             updateDataActions.push(updateDataAction);
         })
@@ -227,8 +236,7 @@ class WorkspaceHandler extends Handler {
         if(updateDataActions.length > 1) {
             //make a single compound action
             action = {};
-            action.action = apogee.compoundaction.ACTION_NAME;
-            action.workspace = this.workspace;
+            action.action = "compoundAction";
             action.actions = updateDataActions;
         }
         else if(updateDataActions.length == 1) {
@@ -240,10 +248,10 @@ class WorkspaceHandler extends Handler {
 
         //execute the action
         if(action) {
-            var actionResponse = apogee.action.doAction(action,false);        
-            if(!actionResponse.getSuccess()) {
+            var actionResponse = doAction(this.workspace,action,false);        
+            if(!actionResponse.actionDone) {
                 //error executing action!
-                throw new Error("Error executing request: " + actionResponse.getErrorMsg());
+                throw new Error("Error executing request: " + actionResponse.errorAlert);
             } 
         }
     }
@@ -256,7 +264,7 @@ class WorkspaceHandler extends Handler {
         //happening. We can check the root folder to figure out which
         var rootFolder = this.workspace.getRoot();
 
-        if((rootFolder.getResultPending())||(this.workspace.actionQueue.length > 0)) {
+        if((rootFolder.getResultPending())||(this.workspace.isActionInProgress())) {
 
             //folder update will be asynchronous. Add a listener on apogee for this member
             //when not pending, resolve the promise
@@ -275,12 +283,12 @@ class WorkspaceHandler extends Handler {
                         }
 
                         //remove this listener
-                        this.workspace.removeListener(apogee.updatemember.MEMBER_UPDATED_EVENT, folderReadyListener);
+                        this.workspace.removeListener("updateData", folderReadyListener);
                     }
                 }
 
                 //add the listener
-                this.workspace.addListener(apogee.updatemember.MEMBER_UPDATED_EVENT, folderReadyListener); 
+                this.workspace.addListener("memberUpdated", folderReadyListener); 
             });
 
             return folderReadyPromise;
@@ -320,7 +328,7 @@ class WorkspaceHandler extends Handler {
     /** This will write the response when the calcuation successfully completes. */
     _writeSuccessResponse(outputMember,response) {
         
-        response.writeHead(200, {"Content-Type":"text/plain"});
+        response.writeHead(200, {"Content-Type":"text/plain", "Access-Control-Allow-Origin":"*"});
         
         //write the body, if applicable
         if(outputMember) {

@@ -6,7 +6,6 @@ var apogeehandler = require("./apogeehandler");
 const FILE_ROOT = "file/";
 const APOGEE_DESCRIPTOR_LOCATION = "deploy/descriptor.json";
 
-
 const PORT = getPort();
 console.log("Using port: " + PORT);
 
