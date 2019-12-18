@@ -1,5 +1,6 @@
 //var apogee = require('./apogee-npm-lib');
-var {Workspace, doAction} = require('./apogeeCorelib.js');
+require("./nodeGlobals.js");
+var {Workspace, doAction} = require('./apogeeCorelib.cjs.js');
 const { Handler } = require('./Handler');
 
 /** This class handles the enpoints associate with a single apogee workspace. \

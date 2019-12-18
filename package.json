@@ -4,8 +4,10 @@
   "description": "Hax server",
   "main": "server.js",
   "dependencies": {
-    "esprima": "~2.7.2",
     "mysql": "~2.17.1"
+  },
+  "INCLUDED_DEPDENCIES - for now": {
+    "esprima": "~2.7.2"
   },
   "author": "Dave Sutter",
   "repository": {
