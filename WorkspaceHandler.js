@@ -1,7 +1,5 @@
-var apogee = require('./apogee-npm-lib');
-
-//this defines some globals we will be needing
-require('./debugHook');
+require("./nodeGlobals.js");
+var {Workspace, doAction} = require('./apogeeCorelib.cjs.js');
 
 //------------------------
 //debug
@@ -106,14 +104,20 @@ console.log("DEBUG: " + getTimestamp() + ": Set handler status. Handler=" + this
             //-----------------------
 
             //create the workspace
-            this.workspace = new apogee.Workspace(headlessWorkspaceJson);  
+            this.workspace = new Workspace(headlessWorkspaceJson); 
+            
+            this.workspace = new Workspace();  
+            let actionResponse = this.workspace.loadFromJson(headlessWorkspaceJson); 
+            //I believe this is not proper error handling
+            if(!actionResponse.actionDone) throw new Error(actionResponse.alertMsg);
             
 //////////////////////////////////////
 //FIX THIS PROBLEM IN BETTER WAY
 let requireEntry = {};
 requireEntry.data = {};
 requireEntry.data.require = require;
-this.workspace.contextManager.addToContextList(requireEntry);
+let contextManager = this.workspace.getContextManager();
+contextManager.addToContextList(requireEntry);
 ///////////////////////////////////////
 
             //-----------------------
@@ -292,7 +296,7 @@ this.workspace.contextManager.addToContextList(requireEntry);
         inputData.forEach(inputEntry => {
             let updateDataAction = {};
             updateDataAction.action = "updateData";
-            updateDataAction.member = inputEntry.member;
+            updateDataAction.memberName = inputEntry.member.getFullName();
             updateDataAction.data = inputEntry.data;
             updateDataActions.push(updateDataAction);
         })
@@ -301,8 +305,7 @@ this.workspace.contextManager.addToContextList(requireEntry);
         if(updateDataActions.length > 1) {
             //make a single compound action
             action = {};
-            action.action = apogee.compoundaction.ACTION_NAME;
-            action.workspace = this.workspace;
+            action.action = "compoundAction";
             action.actions = updateDataActions;
         }
         else if(updateDataActions.length == 1) {
@@ -314,10 +317,10 @@ this.workspace.contextManager.addToContextList(requireEntry);
 
         //execute the action
         if(action) {
-            var actionResponse = apogee.action.doAction(action,false);        
-            if(!actionResponse.getSuccess()) {
+            var actionResponse = doAction(this.workspace,action,false);        
+            if(!actionResponse.actionDone) {
                 //error executing action!
-                throw new Error("Error executing request: " + actionResponse.getErrorMsg());
+                throw new Error("Error executing request: " + actionResponse.errorAlert);
             } 
         }
     }
@@ -330,7 +333,7 @@ this.workspace.contextManager.addToContextList(requireEntry);
         //happening. We can check the root folder to figure out which
         var rootFolder = this.workspace.getRoot();
 
-        if((rootFolder.getResultPending())||(this.workspace.actionQueue.length > 0)) {
+        if((rootFolder.getResultPending())||(this.workspace.isActionInProgress())) {
 
             //folder update will be asynchronous. Add a listener on apogee for this member
             //when not pending, resolve the promise
@@ -349,12 +352,12 @@ this.workspace.contextManager.addToContextList(requireEntry);
                         }
 
                         //remove this listener
-                        this.workspace.removeListener(apogee.updatemember.MEMBER_UPDATED_EVENT, folderReadyListener);
+                        this.workspace.removeListener("updateData", folderReadyListener);
                     }
                 }
 
                 //add the listener
-                this.workspace.addListener(apogee.updatemember.MEMBER_UPDATED_EVENT, folderReadyListener); 
+                this.workspace.addListener("memberUpdated", folderReadyListener); 
             });
 
             return folderReadyPromise;
