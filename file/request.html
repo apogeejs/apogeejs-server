@@ -37,7 +37,8 @@
 			
 			function readBody() {
 				var inputDataField = document.getElementById("inputData"); 
-				return inputDataField.value;		
+				//clear whitespace
+				return inputDataField.value.trim();		
 			}
 			
 			function onDownload(data) {
@@ -65,7 +66,7 @@
 
 				xmlhttp.open(httpMethod,url,true);
 					
-				if(httpMethod == "POST") {
+				if((httpMethod == "POST")&&(body.length > 0)) {
 					xmlhttp.setRequestHeader("Content-Type","application/json");
 				}
 

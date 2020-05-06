@@ -12,6 +12,10 @@ function getTimestamp() {
 }
 //-------------------------------
 
+/** This class manages all requests for a given workspace, with a single workspace supporting one or
+ * more endpoints. This instantiates a base model (workspace) instance and identifies the input and output members
+ * for each endpoint. When a request comes in it instantiates a workspace handler to do the actual request
+ * calculation. */
 class WorkspaceManager extends ActionRunner {
 
     /** Constructor */
@@ -41,7 +45,10 @@ class WorkspaceManager extends ActionRunner {
             //add endpoints to app
             let handlerFunction = (request,response) => this._processRequest(endpointName,request,response);
             let path = "/" + this.workspaceName + "/" + endpointName;
+            //for now we are automatically adding a listener for get and post. We might want to make
+            //this optional or at least dependent on whether or not there is a body
             app.post(path,handlerFunction);
+            app.get(path,handlerFunction);
         }
 
         //load the workspace json
@@ -187,8 +194,10 @@ class WorkspaceManager extends ActionRunner {
 
             //get the input member ids, if applicable
             endpointInfo.inputIds = {};
-            this._loadMemberIds(endpointConfig.inputs,endpointInfo.inputIds);
-
+            if(endpointConfig.inputs) {
+                this._loadMemberIds(endpointConfig.inputs,endpointInfo.inputIds);
+            }
+            
             //get the return value member id, if applicable
             if(endpointConfig.output) {
                 endpointInfo.outputId = this._getMemberId(endpointConfig.output);

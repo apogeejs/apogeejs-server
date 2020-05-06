@@ -1,6 +1,7 @@
 var fs = require('fs');
 const { WorkspaceManager } = require('./WorkspaceManager');
 
+/** This class initializes and shuts down the apogee workspace listeners. */
 class ApogeeManager {
     
     //================================

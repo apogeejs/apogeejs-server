@@ -30,7 +30,9 @@ class ActionRunner {
         return modelRunContext;
     }
 
-    /** This method runs an action on the model. 
+    /** This method runs an action on the model and then checks the state of the system to check for an error, pending
+     * or finished calculation. The action passed in can be null, in which case it immediately checks for completion.
+     * The case of no action corresponds to reading static data from the model, with no input.
      * - action - This is the action to run
      * - invalidOk - The runner checks the status of the root folders to see if the action is complete. This
      *      flag should be set to true if it is OK that some folders have the state INVAID_VALUE. It will trigger
@@ -40,14 +42,19 @@ class ActionRunner {
      * - errorMsgPrefext - This is used to prefix an error message detected in running the action.
      */
     runActionOnModel(action,invalidOk,errorMsgPrefix) {
-        //update the working model instance to run the new command
-        let mutableModel = this.workingModel.getMutableModel();
-        this.workingModel = mutableModel;
 
-        let actionResult = doAction(mutableModel,action);
+        let actionResult;
+        //execute the action (if applicable)
+        if(action) {
+            //update the working model instance to run the new command
+            let mutableModel = this.workingModel.getMutableModel();
+            this.workingModel = mutableModel;
+
+            actionResult = doAction(mutableModel,action);
+        }
         
         //handle error or success
-        if(actionResult.actionDone) {
+        if((!action)||(actionResult.actionDone)) {
             //check if we are finished yet
             //load all root folders and check error state of each
             this._processCompletedAction(invalidOk,errorMsgPrefix);

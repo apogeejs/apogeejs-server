@@ -10,12 +10,9 @@ function getTimestamp() {
 }
 //------------------------
 
-/** This class handles the enpoints associate with a single apogee workspace. \
- * NOTES:
- * -We do not handle the following cases for now:
- * -- timeout
- * -- too many iterations.
- * */
+/** This class manages the calculation for a single request. It starts with a base model instance
+ * and executes an action to update the input tables to the values specified in the request. At completion
+ * of the calculation it returns the result in the response. */
 class WorkspaceHandler extends ActionRunner {
     
     /** Constuctor. This takes an non-request specific info. */
@@ -30,6 +27,9 @@ console.log("DEBUG: " + getTimestamp() + ": Create new handler. " + this.debugId
         this.settings = settings;
         
         //set the apogee model - create a copy of the workspace manager base model
+        //Get clean copy should not actually do anything here other than returning the input model (since it should be "clean").
+        //The model is immutable so once we run actions on it we will not change the input model instance but will end up 
+        //with a new model instance.
         this.setModel(baseModel.getCleanCopy(this.getModelRunContext()));
 
         //these values will be set by the request

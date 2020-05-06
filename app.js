@@ -22,6 +22,14 @@ app.use(FILE_ROOT,express.static("file"));
 //parse json body of requests
 app.use(express.json()) // for parsing application/json
 
+app.use(function(req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*"); // update to match the domain you will make the request from
+    res.header("Access-Control-Allow-Methods", "POST, GET");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.header("Content-Type","application/json");
+    next();
+  });
+
 
 //apogee endpoint initialization
 const apogeeManager = new ApogeeManager();
