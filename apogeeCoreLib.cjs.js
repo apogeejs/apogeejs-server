@@ -6,64 +6,13 @@ function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'defau
 
 var apogeeutil = _interopDefault(require('./apogeeUtilLib.cjs.js'));
 
-/** This namespace contains some basic functions for the application. */
-let base = {};
-
-base.MEMBER_FUNCTION_INVALID_THROWABLE = {"apogeeException":"invalid"};
-base.MEMBER_FUNCTION_PENDING_THROWABLE = {"apogeeException":"pending"};
-
-/** This method creates an integer has value for a string. */
-base.mixin = function(destObject,mixinObject) {
-    for(var key in mixinObject) {
-        destObject.prototype[key] = mixinObject[key];
-    }
-};
-
-/** This method takes a field which can be an object, 
- *array or other value. If it is an object or array it 
- *freezes that object and all of its children, recursively.
- * Warning - this does not check for cycles (which are not in JSON 
- * objects but can be in javascript objects)
- * Implementation from Mozilla */
-base.deepFreeze = function(obj) {
-    if((obj === null)||(obj === undefined)) return;
-    
-    //retrieve the property names defined on obj
-    var propNames = Object.getOwnPropertyNames(obj);
-
-    //freeze properties before freezing self
-    propNames.forEach(function(name) {
-        var prop = obj[name];
-
-        //freeze prop if it is an object
-        if(typeof prop == 'object' && prop !== null) base.deepFreeze(prop);
-    });
-
-    //freeze self (no-op if already frozen)
-    return Object.freeze(obj);
-};
-
-/** This method creates an error object, which has a "message" in the format
- *of a system error. The isFatal flag can be set to specify if this is a fatal or nonfatal
- *error. It may also be omitted. A base error may also be set. */
-base.createError = function(msg,optionalIsFatal,optionalBaseError) {
-    var error = new Error(msg);
-	if(optionalIsFatal !== undefined) {
-		error.isFatal = optionalIsFatal;
-	}
-	if(optionalBaseError !== undefined) {
-		error.baseError = optionalBaseError;
-	}
-    return error;
-};
-
 /* 
  * This is a mixin to give event functionality.
  */
 var EventManager = {};
     
 /** This serves as the constructor. */
-EventManager.init = function() {
+EventManager.eventManagerMixinInit = function() {
      /** This field holds the event listeners
     * @private */
     this.listenerTable = {};
@@ -103,6 +52,11 @@ EventManager.removeListener = function(eventName, callback) {
 };
 
 /** THis method dispatches an event. */
+EventManager.hasListeners = function(eventName) {
+    return this.listenerTable[eventName] ? true : false;
+};
+
+/** THis method dispatches an event. */
 EventManager.dispatchEvent = function(eventName, eventData) {
     var callbackList = this.listenerTable[eventName];
     if(callbackList) {
@@ -136,480 +90,181 @@ EventManager.callHandler = function(handlerName, handlerData) {
     }
 };
 
-/** This module contains functions to process an update to an member
- * which inherits from the FunctionBase component. */
+/** This is a class for the field object formalism. It is used to store fields
+ * and track modifications. It allows you to lock the object so that no more changes
+ * can be made. */
+class FieldObject {
 
-
-/** This moethod should be called on an member (impactor or dependent) that changes.
- * This will allow for any Dependents to be recaculated. */
-function addToRecalculateList(recalculateList,member) {
-    //if it is in the list, return
-    if(recalculateList.indexOf(member) >= 0) return;
-     
-    //add this member to recalculate list if it needs to be executed
-    if((member.isDependent)&&(member.needsCalculating())) {
-        recalculateList.push(member);
-        member.prepareForCalculate();
-    }
-        
-    addDependsOnToRecalculateList(recalculateList,member);
-}
-
-function addDependsOnToRecalculateList(recalculateList,member) {
-    //add any member that depends on this one    
-    var impactsList = member.getImpactsList();
-    for(var i = 0; i < impactsList.length; i++) {
-        addToRecalculateList(recalculateList,impactsList[i]);
-    }
-}
-
-
-
-/** This calls execute for each member in the recalculate list. The return value
- * is false if there are any errors. */
-function callRecalculateList(recalculateList) {
-    var dependent;
-    var i;
-    var success = true;
-    for(i = 0; i < recalculateList.length; i++) {
-        dependent = recalculateList[i];
-        if(dependent.getCalcPending()) {
-            dependent.calculate();   
-        }
-    }
-    
-    return success;
-}
-
-/**
- * Action Module
- * An action is an operation on the data model. The code in this module handles
- * the generic parts of the action process, and the action specific code is placed
- * elsewhere.
- * 
- * Generic Action:
- * - The action is represented by a data object "actionData". 
- * - The method doAction is called to exectue the action.
- * - Available actions are registered through the method addActionInfo.
- *   this allows the doAction method to dispatch the actionData to the proper
- *   action specific code.
- * - Included in doing that action is any updates to dependent tables and the 
- * firing of any events for the changes.
- *   
- * Registering a specific action:
- * To register a specific action, addActionInfo must be called with 
- * a actionInfo object. An action info object is of the following format.
- * actionInfo object: {
- *   "action": (string - this is the name of the action)
- *   "actionFunction": (funtion to exectue object - arguments = actionData,processedActions),
- *   "checkUpdateAll": (boolean - indicates if change in the underlying data model),
- *   "updateDependencies": [Indicates the changed object requires its dependecies be updated),
- *   "addToRecalc": (Indicates the changed object should be added to the recalc list, with its dependencies),
- *   "addDependenceiesToRecalc": (Indicates the changed object should have its dependencies be added to the recalc list, but not itself),
- *   "event": (The name of the event to fire for this object and action.)
- * }
- * 
- * Action Data Format:
- * The action data is used to pass data into the action specific code, and alse to 
- * pass data back from the action specific code. Format:
- * actionData format: {
- *   "action": (The name of the action to execute),
- *   "member": (The data object that is acted upon , if applicable),
- *   (other, multiple): (Specific data for the action),
- *   "onComplete": (OPTIONAL - If this is set it will be called after the action is completed.)
- *   "onAsynchComplete": (OPTIONAL - FOr an asynchronous update, this can be set. It will be
- *   called when the asynch action completes.)
- * }
- * 
- * ActionResult:
- * The return value of the doAction function is an ActionResult struct, with the following data: {
- *   "actionDone": (If this is returned true the action was done. This does not mean it was error free but
- *      it typically does mean the action can be reversed such as with an undo. An example of
- *      where there was an error is if the user is setting code that has a syntax error or that does 
- *      not properly (exectue.)
- *   "actionPending": This flag is returned if the action is a queued action and will be run after the
- *      current action completes.)
- *   "member":
- *   "actionInfo" - (This is the action info associated with the action, mainly used for bookeeping.)
- *   "alertMsg"" (This is a message that should be given to the user. It usually will be sent if there is an error
- *      where actionDone is false, though it may be set on actionDone = true too.)
- *   "isFatal": "If this value is set to true then the application is in an indeterminate state and the user
- *      should not continue."
- *   "childActionResults" - (This is a list of action results if there are additional child actions done with this
- *      action. Examples where this is used are on creating, moving or deleting a folder that has chilren.)
- * }
- * 
- * Action Function:
- * The action function executes the action specific code. It is passed the actionData object
- * and an array "processedActions.". The actions must add any executed actions to the action
- * list. This is done in the action function as opposed to outside because the action
- * function may exectue multiple actions, such as deleting multiple objects.
- * 
- * 
- */ 
-
-/** This structure holds the processing information for all the actions. It is set by each action. 
- * @private */
-let actionInfoMap = {
-};
-
-/** This method is used to execute an action for the data model. */
-function doAction(workspace,actionData) {
-    
-    var actionResult = {};
-    
-    //only allow one action at a time
-    if(workspace.isActionInProgress()) {
-        //this is a messenger action - we will save it and execute it after this computation cycle is complete
-        workspace.saveMessengerAction(actionData);
-        
-        //mark command as pending
-        actionResult.actionPending = true;
-        return actionResult;
-    }
-    
-    //flag action in progress
-    workspace.setActionInProgress(true);
-    
-    try {   
-        
-        //do the action
-        callActionFunction(workspace,actionData,actionResult); 
-        
-        //finish processing the action
-        var recalculateList = [];
-        
-        var completedResults = [];
-        addToCompletedResultList(completedResults,actionResult);
-        
-        //handle cases with a valid object 
-        updateDependencies(workspace,completedResults,recalculateList);
-        
-        updateRecalculateList(completedResults,recalculateList);
-        
-        callRecalculateList(recalculateList);
-    
-        //fire events
-        fireEvents(workspace,completedResults,recalculateList);
-	}
-	catch(error) {
-        if(error.stack) console.error(error.stack);
-        
-        //unknown application error - this is fatal
-        actionResult.actionDone = false;
-        actionResult.isFatal = true;
-        actionResult.alertMsg = "Unknown error updating model: " + error.message;
-        
-        workspace.clearCommandQueue();
-        workspace.setActionInProgress(false);
-        return actionResult;
-        
-    }
-    
-    //flag action in progress
-    workspace.setActionInProgress(false);
-    actionResult.actionDone = true;
-    
-    //if the action has an onComplete callback, call it here.
-    if(actionData.onComplete) {
-        actionData.onComplete(actionResult);
-    }
-    
-    //trigger any pending actions
-    //these will be done asynchronously
-    var savedMessengerAction = workspace.getSavedMessengerAction();
-    if(savedMessengerAction) {
-        var runQueuedAction = true;
-
-        if(workspace.checkConsecutiveQueuedActionLimitExceeded()) {
-            //ask user if about continueing
-            var doContinue = confirm("The calculation is taking a long time. Continue?");
-            if(!doContinue) {
-                workspace.setCalculationCanceled();
-                runQueuedAction = false;
-            }
-        }
-
-        if(runQueuedAction) {
-            //FOR NOW WE WILL RUN SYNCHRONOUSLY!!!
-            doAction(workspace,savedMessengerAction);
-        }
-    }
-    else {
-        workspace.clearConsecutiveQueuedTracking();
-    }
-    
-    //return actionResult
-	return actionResult;
-}
-
-/** This function is used to register an action. */
-function addActionInfo(actionInfo) {
-    if(!actionInfo.action) {
-        //we hav to ignore this action
-        alert("Action name missing from action info: " + JSON.stringify(actionInfo));
-        return;
-    }
-    actionInfoMap[actionInfo.action] = actionInfo;
-}
-
-/** This function looks up the proper function for an action and executes it. */
-function callActionFunction(workspace,actionData,actionResult) {
-
-    //do the action
-    var actionInfo = actionInfoMap[actionData.action];
-    if(actionInfo) {
-        actionResult.actionInfo = actionInfo;
-        actionInfo.actionFunction(workspace,actionData,actionResult);
-    }
-    else {
-        actionResult.actionDone = false;
-        actionResult.alertMsg = "Unknown action: " + actionData.action;
-    }  
-}
-
-//=======================================
-// Internal Methods
-//=======================================
-
-/** This method makes sure the member dependencies in the workspace are properly updated. 
- * @private */
-function updateDependencies(workspace,completedResults,recalculateList) {
-    //check if we need to update the entire model
-    var updateAllDep = checkUpdateAllDep(completedResults);
-    if(updateAllDep) {
-        //update entire model - see conditions bewlo
-        workspace.updateDependeciesForModelChange(recalculateList);
-    }
-    else {
-        //upate dependencies on table with updated code
-        for(var i = 0; i < completedResults.length; i++) {
-            var actionResult = completedResults[i];
-            if((actionResult.actionDone)&&(actionResult.member)) {
-                if(doInitializeDependencies(actionResult)) {
-                    actionResult.member.initializeDependencies();
-                }
-            }
-        }
-    }
-}
-    
-/** This function updates the recalculation list for the given processed actions. 
- * @private */
-function updateRecalculateList(completedResults,recalculateList) {
-    for(var i = 0; i < completedResults.length; i++) {
-        var actionResult = completedResults[i];
-        if((actionResult.actionDone)&&(actionResult.member)) {
-            if(doAddToRecalc(actionResult)) {
-                addToRecalculateList(recalculateList,actionResult.member);            
-            }
-            else if((doAddDependOnToRecalc(actionResult))) {
-                addDependsOnToRecalculateList(recalculateList,actionResult.member);                         
-            }
-        }
-    }
-}
-    
-/** This function fires the proper events for the  It combines events to 
- * fire a single event for each member.
- * @private */
-function fireEvents(workspace,completedResults,recalculateList) {
-
-    var eventMap = {};
-    var member;
-    
-    //go through explicitly called events from results
-    for(var i = 0; i < completedResults.length; i++) {
-        var actionResult = completedResults[i];
-        var actionInfo = actionResult.actionInfo;
-        
-        if(actionInfo) {
-            
-            let eventName = actionInfo.event;
-            if(!eventName) continue;
-            
-            let member = actionResult.member;
-            
-            mergeEventIntoEventMap(eventMap,member,eventName);
-        }
-    }
-    
-    //add an update event for any object not accounted from
-    for(i = 0; i < recalculateList.length; i++) {
-        var member = recalculateList[i];
-        mergeEventIntoEventMap(eventMap,member,"memberUpdated");
-    } 
-    
-    //fire events from the event map
-    for(var idString in eventMap) {
-        let eventInfo = eventMap[idString];
-        workspace.dispatchEvent(eventInfo.event,eventInfo);
-        //clear the update map for this member (the member should be set
-        if(eventInfo.member) {
-            eventInfo.member.clearUpdated();
+    /** constructor.
+     * - objectType - a text only string giving the name of the object type. This
+     * is used in the id string.
+     * - instanceToCopy - if this argument is defined, the created instance will be a shallow copy
+     * of the this passed instance. By default it will have the updated fields flag cleared, but this
+     * can be changed with the "keepUpdatedFixed" flag The new instance will be unlocked.
+     * - keepUpdatedFixed - This should only be used when an instance is copied. If this is true
+     * the copied instance will keep the same fields updated flags. Otherwise they will be cleared.
+     */
+    constructor(objectType,instanceToCopy,keepUpdatedFixed) {
+        if(!instanceToCopy) {
+            this.id = _createId(objectType);
+            this.objectType = objectType;
         }
         else {
-            console.log("Error: Member not set for event: " + eventInfo.event);
+            this.id = instanceToCopy.id;
+            this.objectType = instanceToCopy.objectType;
+
+        }
+
+        this.fieldMap = {};
+        if(instanceToCopy) {
+            Object.assign(this.fieldMap,instanceToCopy.fieldMap);
+        }
+
+        this.updated = {};
+        if(keepUpdatedFixed) {
+            Object.assign(this.updated,instanceToCopy.updated);
+        }
+
+        this.isLocked = false;
+    }
+
+    /** This sets a field value. It will throw an exception if the object is locked. */
+    setField(name,value) {
+        if(this.isLocked) {
+            throw new Error("Attempting to set a value on a locked object.");
+        }
+
+        this.fieldMap[name] = value;
+        this.updated[name] = true;
+    }
+
+    /** This will clear the value of a field. */
+    clearField(name) {
+        if(this.fieldMap[name] !== undefined) {
+            delete this.fieldMap[name];
+            this.updated[name] = true;
         }
     }
-}
 
-/** This is a helper function to dispatch an event. */
-function mergeEventIntoEventMap(eventMap,member,eventName) {
-    
-    //############################################
-    //OOPS - my current logic does nto allow for non-member events. 
-    //for now I will dump them. i need to add them back.
-    if(!member) return;
-    //############################################
-    
-    var memberId = member.getId();
-     
-    var existingInfo = eventMap[memberId];
-    var newInfo;
-     
-    if(existingInfo) {
-        if((existingInfo.event == eventName)) {
-            //repeat event - including case of both being "memberUpdated"
-            newInfo = existingInfo;
-        }
-        else if((existingInfo.event == "memberDeleted")||(eventName == "memberDeleted")) {
-            newInfo =  { member: member, event: "memberDeleted" };
-        }
-        else if((existingInfo.event == "memberCreated")||(eventName == "memberCreated")) {
-            newInfo =  { member: member, updated: member.getUpdated(), event: "memberCreated" };
+    /** This ges a field value, by name. */
+    getField(name) {
+        return this.fieldMap[name];
+    }
+
+    /** This method locks the object. On instantiation the object is unlocked and
+     * fields can be set. Once it it locked the fields can not be changed. */
+    lock() {
+        this.isLocked = true;
+    }
+
+    getIsLocked() {
+        return this.isLocked;
+    }
+
+    /** This returns a map of the updated fields for this object.  */
+    getUpdated() {
+        return this.updated;
+    }
+
+    /** This returns true if the given field is updated. */
+    isFieldUpdated(field) {
+        return this.updated[field] ? true : false;
+    }
+
+    /** This returns true if any fields in the give list have been updated. */
+    areAnyFieldsUpdated(fieldList) {
+        return fieldList.some( field => this.updated[field]);
+    }
+
+    /** This method should be implemented for any object using this mixin. 
+     * This should give a unique identifier for all objects of the given object type, below.
+     * A unique id may optionally be generated using the statid FieldObject method createId. */
+    getId() {
+        return this.id;
+    }
+
+    /** Thie method should be implemented for any object using this method. 
+     * It identifies the type of object. */
+    getType() {
+        return this.objectType;
+    }
+
+    /** This static functions returns the type of an object given the ID. */
+    static getTypeFromId(id) {
+        let typeEnd = id.indexOf("|");
+        if(typeEnd < 0) {
+            throw new Error("Invalid ID");
         }
         else {
-            //we this shouldn't happen - it means we hace an unknown event type
-            throw new Error("Unknown event type: " + existingInfo.event + ", " + eventName);
+            return id.substr(0,typeEnd);
         }
     }
-    else {
-        //create event object - note we don't need the "updated" field on a delete event, but that is ok
-        newInfo =  { member: member, updated: member.getUpdated(), event: eventName };
-    }
-     
-    eventMap[memberId] = newInfo; 
-}
 
-/** This method determines if updating all dependencies is necessary. Our dependency 
- * tracking may be in error if a new member is created, a member is deleted or
- * a member is moved. In these actions we flag that the entire model should be
- * updated.*/
-function checkUpdateAllDep(completedResults) {
-    for(var i = 0; i < completedResults.length; i++) {
-        var actionResult = completedResults[i];
-        
-        //we need to update the entire model if any actino is flagged as such
-        if(actionResult.member) {
-            var actionInfo = actionResult.actionInfo;
-            if((actionInfo)&&(actionInfo.checkUpdateAll)){
-                return true;
-            }
+    /** This static function indicates if the given ID is an object of the given type. */
+    static idIsTypeOf(id,type) {
+        return id.startsWith(type + "|");
+    }
+
+    /** This loads the current field object to have a copy of the data from the given field object.
+     * The update field is however cleared. This method will throw an exception is you try to copy 
+     * into a loacked object. */
+    copyFromFieldsObject(otherFieldObject) {
+        if(this.isLocked) {
+            throw new Error("Attempting to copy fields into a locked object.");
         }
-    }
-    return false;
-}
 
-/** This method if a single action entry requires updating dependencies for the associated member. */
-function doInitializeDependencies(actionResult) {
-    if(!actionResult.member) return false;
+        for(name in otherFieldObject.fieldMap) {
+            this.fieldMap[name] = otherFieldObject.fieldMap[name];
+        }
+        this.updated = {};
+    }
+
+    //================================
+    // Static Methods
+    //================================
+
     
-    //only applicable to codeables
-    if((actionResult.actionInfo)&&(actionResult.member.isCodeable)) {
-        return actionResult.actionInfo.updateDependencies;
-    }
-    else {
-        return false;
-    }
+
 }
 
-/** This method checks if the associated member and its dependencies need to be added to the recalc list. */
-function doAddToRecalc(actionResult) {
-    if(!actionResult.member) return false;
-    if(!actionResult.member.isDependent) return false;
-    
-    if(actionResult.actionInfo) {
-        return actionResult.actionInfo.addToRecalc;
-    }
-    else {
-        return false;
-    }
+/** This function generates a ID that is unique over the span of this application execution (until the 
+ * integers wrap). This is suitable for creating the field object ID for an instance.
+ * At some point we shouldhandle wrapping, and the three cases it can cause - negative ids, 0 id, and most seriously,
+ * a reused id.
+ * 
+ * Currently planned future solution to wrapping: make this an operation issue. And event can be issued when we 
+ * have reached given id values. Then it is the responsibility of the operator to restart the sytems. This is probably safer
+ * than trying to com eup with some clever remapping solution. */
+function _createId(objectType) {
+    return objectType + "|" + nextId++;
 }
 
-/** This method checks if the dependencies of the associated needs to be added to the recalc list, but not the member itself. */
-function doAddDependOnToRecalc(actionResult) {
-    if(actionResult.actionInfo) {
-        return actionResult.actionInfo.addDependenceiesToRecalc;
-    }
-    else {
-        return false;
-    }
-}
+/** This is used for Id generation.
+ * @private */
+let nextId = 1;
 
-/** This method unpacks the actionResult and its child reponse into an array of actionResult. */
-function addToCompletedResultList(completedResults,actionResult) {
-    completedResults.push(actionResult);
-    if(actionResult.childActionResults) {
-        for(var key in actionResult.childActionResults) {
-            addToCompletedResultList(completedResults,actionResult.childActionResults[key]);
-        }      
-    }
-}
-
-//============================================
-// Compound Action
-//============================================
-
-/** The compound action is automatically imported when the action module is imported.
- *
- * Action Data format:
- * {
- *  "action": "compoundAction",
- *  "actions": (list of actions in this compound action),
- * }
- */
-
-
-/** This method is the action function for a compound action. */
-function compoundActionFunction(workspace,actionData,actionResult) {
-
-    var actionList = actionData.actions;
-    actionResult.childActionResults = [];
-    for(var i = 0; i < actionList.length; i++) {
-        let childActionData = actionList[i];
-        let childActionResult = {};
-        callActionFunction(workspace,childActionData,childActionResult);
-        actionResult.childActionResults.push(childActionResult);   
-    }
-    actionResult.actionDone = true;
-}
-
-/** Action info */
-let COMPOUND_ACTION_INFO = {
-    "action": "compoundAction",
-    "actionFunction": compoundActionFunction,
-    "checkUpdateAll": false,
-    "updateDependencies": false,
-    "addToRecalc": false,
-    "event": null
-};
-
-
-//This line of code registers the action 
-addActionInfo(COMPOUND_ACTION_INFO);
-
-/** This class manages context for the user code. It is used to look up 
- * variables from the scope defined by the context. 
- * It contains a context list, that allows for a number of entries. There are two
- * types of entries, "parent" entries and "data" entries.
- * A "parent" entry is an sopogee parent, which contains apogee members. From the "parent" entry 
- * you can lookup either a member object (getMember) or a member object value (getValue)
- * A "data" entry is a map of variables. Thse are not apogee members. With a "data" entry 
- * you can look up the variable values only. This is used to give access to other
- * variables besides the apogee members. */
+/** This class manages variable scope for the user code. It is used to look up 
+ * variables both to find dependencies in member code or to find the value for
+ * member code execution.
+ * 
+ * It has two lookup functions. "getMember" looks up members and is used to 
+ * find dependencies. "getValue" looks up member values, for evaluating member values.
+ * 
+ * When a lookup is done, the named member/value is looked up in the local member scope. If it is not found,
+ * the search is then done in the parent of the member. This chain continues until we reach a "root" object,
+ * an example of which is the model object itself.
+ * 
+ * The root object has a lookup like the other context manager objects, however, if a lookup fails
+ * to fins something, it does a lookup on global javascript variables. (Any filtering on this is TBD)
+ * 
+ * In the local scope for each context holder there is a context list, that allows for a number of entries. 
+ * Currently the only one type of entry - parent entry. It looks up children of the current object.
+ * 
+ * In the future we can add imports for the local scope, and potentially other lookup types. 
+ * */
 function ContextManager(contextHolder) {
     this.contextHolder = contextHolder;
+
     this.contextList = [];
 }
 
@@ -628,16 +283,16 @@ ContextManager.prototype.clearContextList = function() {
     this.contextList = [];
 };
 
-ContextManager.prototype.getValue = function(varName) {
-    var data = this.lookupValue(varName);
+ContextManager.prototype.getValue = function(model,varName) {
+    var data = this.lookupValue(model,varName);
     
     //if the name is not in this context, check with the parent context
     if(data === undefined) {
-        if((this.contextHolder)&&(this.contextHolder.getOwner)) {
-            var owner = this.contextHolder.getOwner();
-            if(owner) {
-                var ownerContextManager = owner.getContextManager();
-                data = ownerContextManager.getValue(varName);
+        if((this.contextHolder)&&(!this.contextHolder.getIsScopeRoot())) {
+            var parent = this.contextHolder.getParent(model);
+            if(parent) {
+                var parentContextManager = parent.getContextManager();
+                data = parentContextManager.getValue(model,varName);
             }
         }
     }
@@ -645,16 +300,17 @@ ContextManager.prototype.getValue = function(varName) {
     return data;
 };
 
-ContextManager.prototype.getMember = function(path) {
-    var impactor = this.lookupMember(path);
+ContextManager.prototype.getMember = function(model,pathArray,optionalParentMembers) {
+    let index = 0;
+    var impactor = this.lookupMember(model,pathArray,index,optionalParentMembers);
     
     //if the object is not in this context, check with the parent context
-    if(impactor === undefined) {
-        if((this.contextHolder)&&(this.contextHolder.getOwner)) {
-            var owner = this.contextHolder.getOwner();
-            if(owner) {
-                var ownerContextManager = owner.getContextManager();
-                impactor = ownerContextManager.getMember(path);
+    if(!impactor) {
+        if((this.contextHolder)&&(!this.contextHolder.getIsScopeRoot())) {
+            var parent = this.contextHolder.getParent(model);
+            if(parent) {
+                var parentContextManager = parent.getContextManager();
+                impactor = parentContextManager.getMember(model,pathArray,optionalParentMembers);
             }
         }
     }
@@ -667,42 +323,65 @@ ContextManager.prototype.getMember = function(path) {
 //==================================
 
 /** Check each entry of the context list to see if the data is present. */
-ContextManager.prototype.lookupValue = function(varName) {
+ContextManager.prototype.lookupValue = function(model,varName) {
     var data;
+    let childFound = false;
     for(var i = 0; i < this.contextList.length; i++) {
         var entry = this.contextList[i];        
-        if(entry.parent) {
+        if(entry.contextHolderAsParent) {
             //for parent entries, look up the child and read the data
-            var child = entry.parent.lookupChild(varName);
+            var child = this.contextHolder.lookupChild(model,varName);
             if(child) {
                 data = child.getData();
+                childFound = true;
             }
         }
-        else if(entry.data) {
-            //for data entries, look up the value from the data map
-            data = entry.data[varName];
-        }
         
-        if(data !== undefined) return data;
+        if(childFound) return data;
+    }
+
+    if(this.contextHolder.getIsScopeRoot()) {
+        data = this.getValueFromGlobals(varName);
+
+        if(data != undefined) {
+            return data;
+        }
     }
     
     return undefined;
 };
 
-ContextManager.prototype.lookupMember = function(path) {
+ContextManager.prototype.lookupMember = function(model,pathArray,index,optionalParentMembers) {
     var impactor;
     for(var i = 0; i < this.contextList.length; i++) {
         var entry = this.contextList[i];        
-        if(entry.parent) {
+        if(entry.contextHolderAsParent) {
             //for parent entries, look up the child and read the data
-            impactor = entry.parent.lookupChildFromPathArray(path);
+            impactor = this.contextHolder.lookupChild(model,pathArray[index]);
+
+            if((impactor)&&(impactor.isContextHolder)) {
+                let childImpactor = impactor.getContextManager().lookupMember(model,pathArray,index+1);
+                if(childImpactor) {
+                    if(optionalParentMembers) {
+                        optionalParentMembers.push(impactor);
+                    }
+                    impactor = childImpactor;
+                }
+            }
+
         }
         //no lookup in data entries
         
-        if(impactor !== undefined) return impactor;
+        if(impactor) return impactor;
     }
     
     return undefined;
+};
+
+ContextManager.prototype.getValueFromGlobals = function(varName) {
+    //for now don't do any filtering
+    //in the future we may want to do something so people don't deine their own globals - TBD
+    return __globals__[varName];
 };
 
 /** This component encapsulates an object that has a context manager.
@@ -714,9 +393,14 @@ ContextManager.prototype.lookupMember = function(path) {
 let ContextHolder = {};
 
 /** This initializes the component */
-ContextHolder.init = function() {
+ContextHolder.contextHolderMixinInit = function(isScopeRoot) {
+    this.isScopeRoot = isScopeRoot;
+
+    //&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+    //What kind of field is this? Dependent?
     //will be set on demand
     this.contextManager = null;
+    //&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 };
 
 ContextHolder.isContextHolder = true;
@@ -731,447 +415,1162 @@ ContextHolder.getContextManager = function() {
     return this.contextManager;
 };
 
+ContextHolder.getIsScopeRoot = function() {
+    return this.isScopeRoot;
+};
+
 //this method must be implemneted in extending classes
 ///** This method retrieve creates the loaded context manager. */
 //ContextHolder.createContextManager = function();
 
-/** This component encapsulates an object that owns a member. This is different from
- * Parent in that Parent is also a member. Parents are a subset of owners.
- * An object that owns a root folder is an owner but not a parent.
- * Examples of Owners that are not parent are the Workspace, which holds the workspace root folder
- * and the FolderFunction, which is a data object which has its own root folder containing its children,
- * which are inaccessible from the rest of the workspace.
+/** This component encapsulates an parent object that is a member and contains children members, creating  a 
+ * hierarchical structure in the model. Each child has a name and this name
+ * forms the index of the child into its parent. (I guess that means it doesn't
+ * have to be a string, in the case we made an ArrayFolder, which would index the
+ * children by integer.)
  * 
  * This is a mixin and not a class. It is used for the prototype of the objects that inherit from it.
- * 
- * COMPONENT DEPENDENCIES:
- * An Owner must be a Context Holder
  */
-let Owner = {};
+let Parent = {};
 
-/** This initializes the component */
-Owner.init = function() {
+/** This initializes the component.
+ * - isCopy - this should be set to true (or another value that evaluates to true) if this parent is being initialized
+ * as a copy of aother instance.
+ */
+Parent.parentMixinInit = function(isCopy) {
+    //default value. Can be reconfigured
+    this.childrenWriteable = true;
+
+    if(!isCopy) {
+        //initialize the child mape
+        this.setField("childIdMap",{});
+    }
 };
 
-Owner.isOwner = true;
+Parent.isParent = true;
 
-//must be implemented in extending object
-///** This method retrieves the workspace for the child of this owner. */
-//Owner.getWorkspace = function();
+/** This method returns the map of the children. */
+Parent.getChildIdMap = function() {
+    return this.getField("childIdMap");
+};
 
-//must be implemented in extending object
-///** This method retrieves the full name whichis relevent for a root folder owned
-// * by this object. */
-//Owner.getPossesionNameBase = function();
+/** This method looks up a child from this parent.  */
+Parent.lookupChildId = function(name) {
+    //check look for object in this folder
+    let childIdMap = this.getField("childIdMap");
+    return childIdMap[name];
+};
+
+/** This method looks up a child from this parent.  */
+Parent.lookupChild = function(model,name) {
+    let childId = this.lookupChildId(name);
+    if(childId) {
+        return model.lookupMemberById(childId);
+    }
+    else {
+        return null;
+    }
+};
+
+/** This method allows the UI to decide if the user can add children to it. This
+ * value defaults to true. */
+Parent.getChildrenWriteable = function() {
+    return this.childrenWriteable;
+};
+
+/** This method sets the writeable property for adding child members. This value of
+ * the method is not enforced (since children must be added one way or another). */
+Parent.setChildrenWriteable = function(writeable) {
+    this.childrenWriteable = writeable; 
+};
+
+/** This method adds a table to the folder. It also sets the folder for the
+ *table object to this folder. It will fail if the name already exists.  */
+Parent.addChild = function(model,child) {
+    
+    //check if it exists first
+    let name = child.getName();
+    let childIdMap = this.getField("childIdMap");
+    if(childIdMap[name]) {
+        //already exists! not fatal since it is not added to the model yet,
+        throw new Error("There is already an object with the given name.");
+    }
+
+    //make a copy of the child map to modify
+    let newChildIdMap = {};
+    Object.assign(newChildIdMap,childIdMap);
+
+    //add object
+    newChildIdMap[name] = child.getId();
+    this.setField("childIdMap",newChildIdMap);
+    
+    //set all children as dependents
+    if(this.onAddChild) {
+        this.onAddChild(model,child);
+    }
+};
+
+//This method should optionally be implemented for any additional actions when a Child is added.
+//Parent.onAddChild(model,child);
+
+/** This method removes a table from the folder. */
+Parent.removeChild = function(model,child) {
+    //make sure this is a child of this object
+    var parent = child.getParent(model);
+    if((!parent)||(parent !== this)) return;
+    
+    //remove from folder
+    var name = child.getName();
+    let childIdMap = this.getField("childIdMap");
+    //make a copy of the child map to modify
+    let newChildIdMap = {};
+    Object.assign(newChildIdMap,childIdMap);
+    
+    delete(newChildIdMap[name]);
+    this.setField("childIdMap",newChildIdMap);
+    
+    //set all children as dependents
+    if(this.onRemoveChild) {
+        this.onRemoveChild(model,child);
+    }
+};
+
+//This method should optionally be implemented for any additional actions when a Child is removed.
+//Parent.onRemoveChild(model,child);
+
+///** This method is called when the model is closed. 
+//* It should do any needed cleanup for the object. */
+Parent.onClose = function() {
+    let childIdMap = this.getField("childIdMap");
+    for(var key in childIdMap) {
+        var childId = childIdMap[key];
+        let child = model.lookupMemberById(childId);
+        if((child)(child.onClose)) child.onClose();
+    }
+
+    if(this.onCloseAddition) {
+        this.onCloseAddition();
+    }
+};
+
+//This method should optionally be implemented if there are any additional actions when the parent is closed.
+//This method will be called after all children have been closed.
+//Parent.onCloseAddition();
+
+//This method should be implemented to give the base name the children inherit for the full name. */
+//Parent.getPossesionNameBase = function(model);
 
 /** This method returns the full name in dot notation for this object. */
-Owner.getChildFullName = function(childName) {
-    return this.getPossesionNameBase() + childName;
+Parent.getChildFullName = function(model,childName) {
+    return this.getPossesionNameBase(model) + childName;
 };
 
-//must be implented by extending object
-///** This method retrieves the context manager for this owner. */
-//Owner.getContextManager = function();
-
 /** This method looks up a member by its full name. */
-Owner.getMemberByFullName = function(fullName) {
+Parent.getMemberByFullName = function(model,fullName) {
     var path = fullName.split(".");
-    return this.getMemberByPathArray(path);
+    return this.lookupChildFromPathArray(model,path);
 };
 
-///** This method looks up a member by an array path. The start element is
-// * the index of the array at which to start. */
-//Owner.getMemberByPathArray = function(path,startElement);
-
-///** This method is called when the workspace is closed.
-// It should do any needed cleanup for the object. */
-//Owner.onClose = function();
-
-/** This component encapsulates an owner object which is not a member and it contains a single child (usually a folder) which
- * is the "root" object for a hierarchy.
- * 
- * This is a mixin and not a class. It is used for the prototype of the objects that inherit from it.
- * 
- * COMPONENT DEPENDENCIES:
- * - A RootHolder must be an Owner.
- */
-let RootHolder = {};
-
-/** This initializes the component */
-RootHolder.init = function() {
-};
-
-RootHolder.isRootHolder = true;
-
-// Must be implemented in extending object
-///** This method sets the root object.  */
-//RootHolder.setRoot = function(member);
-
-// Must be implemented in extending object
-///** This method returns the root object.  */
-//RootHolder.getRoot = function();
-
-/** This is the workspace. Typically owner should be null. It
- * is used for creating virtual workspaces. 
- * - optionalJson - For new workspaces this can be empty. If we are deserializing an existing
- * workspace, the json for it goes here.
- * - optionalContextOwner - This is used if the workspace should be placed in a context. This is 
- * used for the virtual workspace created for folder functions, so the folder function can 
- * access variables from the larger workspace.
- * */
-function Workspace(optionalContextOwner) {
-    //base init
-    EventManager.init.call(this);
-    ContextHolder.init.call(this);
-    Owner.init.call(this);
-    RootHolder.init.call(this);
-    
-    // This is a queue to hold actions while one is in process.
-    this.actionInProgress = false;
-    this.messengerActionList = [];
-    this.consecutiveActionCount = 0;
-    this.activeConsecutiveActionLimit = Workspace.CONSECUTIVE_ACTION_INITIAL_LIMIT;
-    this.name = Workspace.DEFAULT_WORKSPACE_NAME;
-    
-    this.owner = optionalContextOwner ? optionalContextOwner : null;
-}
-
-//add components to this class
-base.mixin(Workspace,EventManager);
-base.mixin(Workspace,ContextHolder);
-base.mixin(Workspace,Owner);
-base.mixin(Workspace,RootHolder);
-
-
-Workspace.DEFAULT_WORKSPACE_NAME = "Workspace";
-Workspace.ROOT_FOLDER_NAME = "Model";
-
-Workspace.CONSECUTIVE_ACTION_INITIAL_LIMIT = 500;
-
-Workspace.EMPTY_WORKSPACE_JSON = {
-    "fileType": "apogee workspace",
-    "version": 0.2,
-    "name": "Workspace",
-    "data": {
-        "name": "Model",
-        "type": "apogee.Folder"
-    }
-};
-
-/** This method returns the root object - implemented from RootHolder.  */
-Workspace.prototype.setName = function(name) {
-    this.name = name;
-};
-
-/** This method returns the root object - implemented from RootHolder.  */
-Workspace.prototype.getName = function() {
-    return this.name;
-};
-
-/** This method returns the root object - implemented from RootHolder.  */
-Workspace.prototype.getRoot = function() {
-    return this.rootFolder;
-};
-
-/** This method sets the root object - implemented from RootHolder.  */
-Workspace.prototype.setRoot = function(member) {
-    this.rootFolder = member;
-};
-
-/** This allows for a workspace to have a parent. For a normal workspace this should be null. 
- * This is used for finding variables in scope. */
-Workspace.prototype.getOwner = function() {
-    return this.owner;
-};
-
-/** This method updates the dependencies of any children in the workspace. */
-Workspace.prototype.updateDependeciesForModelChange = function(recalculateList) {
-    if(this.rootFolder) {
-        this.rootFolder.updateDependeciesForModelChange(recalculateList);
-    }
-};
-
-/** This method removes any data from this workspace on closing. */
-Workspace.prototype.onClose = function() {
-    this.rootFolder.onClose();
-};
-
-//------------------------------
-// Queded Action Methods
-//------------------------------
-
-/** This function triggers the action for the queued action to be run when the current thread exits. */
-Workspace.prototype.isActionInProgress = function() {
-    return this.actionInProgress;
-};
-
-Workspace.prototype.setActionInProgress = function(inProgress) {
-    this.actionInProgress = inProgress;
-};
-
-Workspace.prototype.saveMessengerAction = function(actionInfo) {
-    this.messengerActionList.push(actionInfo);
-};
-
-Workspace.prototype.getSavedMessengerAction = function() {
-    if(this.messengerActionList.length > 0) {
-        var actionData = {};
-        actionData.action = "compoundAction";
-        actionData.actions = this.messengerActionList;
-        this.messengerActionList = [];
-        return actionData;
-    }
-    else {
-        return null;
-    }
-};
-
-/** This method should be called for each consecutive queued action. It checks it if there are 
- * too many. If so, it returns true. In so doing, it also backs of the consecutive queued 
- * action count so next time it will take longer. Any call to clearConsecutiveQueuedActionCount
- * will return it to the default initial value.
- */
-Workspace.prototype.checkConsecutiveQueuedActionLimitExceeded = function() {
-    this.consecutiveActionCount++;
-    
-    //check the limit
-    var exceedsLimit = (this.consecutiveActionCount > this.activeConsecutiveActionLimit);
-    if(exceedsLimit) {
-        //back off limit for next time
-        this.activeConsecutiveActionLimit *= 2;
-    }
-    
-    return exceedsLimit;
-};
-
-/** This should be called wo abort any queued actions. */
-Workspace.prototype.setCalculationCanceled = function() {
-    //reset queued action variables
-    this.clearCommandQueue();
-    
-    alert("The tables are left in improper state because the calculation was aborted. :( ");
-};
-
-/** This should be called when there is not a queued action. */
-Workspace.prototype.clearConsecutiveQueuedTracking = function() {
-    this.consecutiveActionCount = 0;
-    this.activeConsecutiveActionLimit = Workspace.CONSECUTIVE_ACTION_INITIAL_LIMIT;
-};
-
-/** This method resets the command queue */
-Workspace.prototype.clearCommandQueue = function() {
-    //reset queued action variables
-    this.messengerActionList = [];
-    this.clearConsecutiveQueuedTracking();
-};
-
-
-//------------------------------
-// Owner Methods
-//------------------------------
-
-/** this method is implemented for the Owner component/mixin. */
-Workspace.prototype.getWorkspace = function() {
-   return this;
-};
-
-/** this method gets the hame the children inherit for the full name. */
-Workspace.prototype.getPossesionNameBase = function() {
-    //the name starts over at a new workspace
-    return "";
-};
-
-/** This method looks up a member by its full name. */
-Workspace.prototype.getMemberByPathArray = function(path,startElement) {
+/** This method looks up a child using an arry of names corresponding to the
+ * path from this folder to the object.  The argument startElement is an optional
+ * index into the path array for fodler below the root folder. 
+ * The optional parentMemberList argument can be passed in to load the parent members 
+ * for the given member looked up. */
+Parent.lookupChildFromPathArray = function(model,path,startElement,optionalParentMemberList) {
     if(startElement === undefined) startElement = 0;
-    if(path[startElement] === this.rootFolder.getName()) {
-        if(startElement === path.length-1) {
-            return this.rootFolder;
+    
+    var childMember = this.lookupChild(model,path[startElement]);
+    if(!childMember) return undefined;
+    
+    if(startElement < path.length-1) {
+        if(childMember.isParent) {
+            let grandChildMember = childMember.lookupChildFromPathArray(model,path,startElement+1,optionalParentMemberList);
+            //record the parent path, if requested
+            if((grandChildMember)&&(optionalParentMemberList)) {
+                optionalParentMemberList.push(childMember);
+            }
+            return grandChildMember;
         }
         else {
-            startElement++;
-            return this.rootFolder.lookupChildFromPathArray(path,startElement);
+            return childMember;
         }
     }
     else {
-        return null;
+        return childMember;
     }
 };
 
-//------------------------------
-//ContextHolder methods
-//------------------------------
+/** This is the model. 
+ * -instanceToCopy - if the new instance should be a copy of an existing instance, this
+ * argument should be populated. The copy will have the same field values but it will be unlocked 
+ * and by default the update fields will be cleared. The event listeners are also cleared.
+ * - keepUpdatedFixed - If this argument is set to true, the updated field values will be maintained.
+ * */
+class Model extends FieldObject {
 
-/** This method retrieve creates the loaded context manager. */
-Workspace.prototype.createContextManager = function() {
-    //set the context manager
-    var contextManager = new ContextManager(this);
-    
-    //if no owner is defined for the workspace - the standard scenario, we will
-    //add all global variables as a data entry for the context, so these variables
-    //can be called from the workspace. 
-    if(!this.owner) {
-        var globalVarEntry = {};
-        globalVarEntry.data = __globals__;
-        contextManager.addToContextList(globalVarEntry);
-    }
-    //if there is an owner defined, the context manager for the owner will be used
-    //to lokoup variables. This is done for a folder function, so that it has
-    //access to other variables in the workspace.
-    
-    return contextManager;
-};
+    constructor(runContext,instanceToCopy,keepUpdatedFixed) {
+        //base init
+        super("model",instanceToCopy,keepUpdatedFixed);
 
-//============================
-// Save Functions
-//============================
+        //mixin initialization
+        this.eventManagerMixinInit();
+        //this is a root for the context
+        this.contextHolderMixinInit(true);
+        this.parentMixinInit(instanceToCopy);
 
-/** This is the supported file type. */
-Workspace.SAVE_FILE_TYPE = "apogee workspace";
+        this.runContext = runContext;
 
-/** This is the supported file version. */
-Workspace.SAVE_FILE_VERSION = 0.2;
+        //==============
+        //Fields
+        //==============
+        //Initailize these if this is a new instance
+        if(!instanceToCopy) {
+            this.setField("name",Model.DEFAULT_MODEL_NAME);
+            this.setField("impactsMap",{});
+            //create the member map, with the model included
+            let memberMap = {};
+            memberMap[this.getId()] = this;
+            this.setField("memberMap",memberMap);
+        }
 
-/** This method creates a headless workspace json from a folder json. It
- * is used in the folder function. */
-Workspace.createWorkpaceJsonFromFolderJson = function(name,folderJson) {
-	//create a workspace json from the root folder json
-	var workspaceJson = {};
-    workspaceJson.fileType = Workspace.SAVE_FILE_TYPE;
-    workspaceJson.version = Workspace.SAVE_FILE_VERSION;
-    workspaceJson.name = name;
-    workspaceJson.data = folderJson;
-	return workspaceJson;
-};
+        //==============
+        //Working variables
+        //==============
+        this.workingImpactsMap = null;
+        this.workingMemberMap = null;
+        this.workingChangeMap = {};
 
-/** This saves the workspace */
-Workspace.prototype.toJson = function() {
-    var rootFolderJson = this.rootFolder.toJson();
-    return Workspace.createWorkpaceJsonFromFolderJson(this.name,rootFolderJson);
-};
+        //add a change map entry for this object
+        this.workingChangeMap[this.getId()] = {action: instanceToCopy ? "updated" : "created", instance: this};
 
-/** This is loads data from the given json into this workspace. */
-Workspace.prototype.loadFromJson = function(json) {
-    var fileType = json.fileType;
-	if(fileType !== Workspace.SAVE_FILE_TYPE) {
-		throw base.createError("Bad file format.",false);
-	}
-    if(json.version !== Workspace.SAVE_FILE_VERSION) {
-        throw base.createError("Incorrect file version. CHECK APOGEEJS.COM FOR VERSION CONVERTER.",false);
+        // This is a queue to hold actions while one is in process.
+        this.actionInProgress = false;
+        this.messengerActionList = [];
+        this.consecutiveActionCount = 0;
+        this.activeConsecutiveActionLimit = Model.CONSECUTIVE_ACTION_INITIAL_LIMIT;
     }
 
-    if(json.name !== undefined) {
-        this.name = json.name;
+    /** This method returns a mutable copy of this instance. If the instance is already mutable
+     * it will be returned rather than making a new one.  */
+    getMutableModel() {
+        if(this.getIsLocked()) {
+            //create a new instance that is a copy of this one
+            let newModel = new Model(this.runContext,this);
+
+            //update the member map for the new model
+            let newMemberMap = {};
+            let oldMemberMap = newModel.getField("memberMap");
+            Object.assign(newMemberMap,oldMemberMap);
+            newMemberMap[newModel.getId()] = newModel;
+            newModel.setField("memberMap",newMemberMap);
+
+            return newModel;
+        }
+        else {
+            //return this instance since it si already unlocked
+            return this;
+        }
     }
 
-    var actionData = {};
-    actionData.action = "createMember";
-    actionData.workspaceIsOwner = true;
-    actionData.createData = json.data;
-    var actionResult = doAction(this,actionData);
+    /** This gets a copy of the model where any unlocked members are replaced with new instance copies.
+     * This ensures if we look up a mutable member from here we get a different instance from what was 
+     * in our original model instance. */
+    getCleanCopy(newRunContext) {
+        let newModel = new Model(newRunContext,this);
+
+        //update the member map for the new model
+        let oldMemberMap = this.getField("memberMap");
+
+        newModel._populateWorkingMemberMap();
+        newModel.workingMemberMap[newModel.getId()] = newModel;
+
+        for(let memberId in oldMemberMap) {
+            let member = oldMemberMap[memberId];
+            if((member != this)&&(!member.getIsLocked())) {
+                //create a new copy of the member and register it.
+                let newMember = new member.constructor(member.getName(),member.getParentId(),member);
+                newModel.workingMemberMap[newMember.getId()] = newMember;
+            }
+        }
+
+        return newModel;
+    }
+
+    /** This method locks all member instances and the model instance. */
+    lockAll() {
+        //clear up working fields
+        this.workingChangeMap = null;
+
+        //make sure the other working fields have been saved
+        if(this.workingImpactsMap) this.finalizeImpactsMap();
+        if(this.workingMemberMap) this.finalizeMemberMap();
+
+        //member map includes all members and the model
+        let memberMap = this.getField("memberMap");
+        for(let id in memberMap) {
+            //this will lock the model too
+            //we maybe shouldn't be modifying the members in place, but we will do it anyway
+            memberMap[id].lock();
+        }
+    }
+
+    /** This shoudl be called after all dependencies have been updated to store the
+     * impacts map (We kept a mutable working copy during construction for efficiency)  */
+    finalizeImpactsMap() {
+        if(this.workingImpactsMap) {
+            this.setField("impactsMap",this.workingImpactsMap);
+            this.workingImpactsMap = null;
+        } 
+    }
+
+    finalizeMemberMap() {
+        if(this.workingMemberMap) {
+            this.setField("memberMap",this.workingMemberMap);
+            this.workingMemberMap = null;
+        }
+    }
+
+    /** This returns a map of the changes to the model. It is only valid while the 
+     * model instance is unlocked. */
+    getChangeMap() {
+        return this.workingChangeMap;
+    }
+
+    /** This function should be used to execute any action that is run asynchronously with the current
+     * action. The action is run on a model and it is uncertain whether the existing model will still be 
+     * current when this new action is run. An example of when this is used is to populate a data table in
+     * response to a json request completing.  */
+    doFutureAction(actionData) {
+        this.runContext.doFutureAction(this.getId(),actionData);
+    }
+
+    /** This method returns the root object - implemented from RootHolder.  */
+    setName(name) {
+        this.setField("name",name);
+    }
+
+    /** This method returns the root object - implemented from RootHolder.  */
+    getName() {
+        return this.getField("name");
+    }
+
+    /** This method updates the dependencies of any children
+     * based on an object being added. */
+    updateDependeciesForModelChange(additionalUpdatedMembers) {
+        //call update in children
+        let childIdMap = this.getChildIdMap();
+        for(var name in childIdMap) {
+            var childId = childIdMap[name];
+            let child = this.lookupMemberById(childId);
+            if((child)&&(child.isDependent)) {
+                child.updateDependeciesForModelChange(this,additionalUpdatedMembers);
+            }
+        }
+    }
+
+    //------------------------------
+    // Queded Action Methods
+    //------------------------------
+
+    /** This function triggers the action for the queued action to be run when the current thread exits. */
+    isActionInProgress() {
+        return this.actionInProgress;
+    }
+
+    setActionInProgress(inProgress) {
+        this.actionInProgress = inProgress;
+    }
+
+    saveMessengerAction(actionInfo) {
+        this.messengerActionList.push(actionInfo);
+    }
+
+    getSavedMessengerAction() {
+        if(this.messengerActionList.length > 0) {
+            var actionData = {};
+            actionData.action = "compoundAction";
+            actionData.actions = this.messengerActionList;
+            this.messengerActionList = [];
+            return actionData;
+        }
+        else {
+            return null;
+        }
+    }
+
+    /** This method should be called for each consecutive queued action. It checks it if there are 
+     * too many. If so, it returns true. In so doing, it also backs of the consecutive queued 
+     * action count so next time it will take longer. Any call to clearConsecutiveQueuedActionCount
+     * will return it to the default initial value.
+     */
+    checkConsecutiveQueuedActionLimitExceeded() {
+        this.consecutiveActionCount++;
+        
+        //check the limit
+        var exceedsLimit = (this.consecutiveActionCount > this.activeConsecutiveActionLimit);
+        if(exceedsLimit) {
+            //back off limit for next time
+            this.activeConsecutiveActionLimit *= 2;
+        }
+        
+        return exceedsLimit;
+    }
+
+    /** This should be called wo abort any queued actions. */
+    setCalculationCanceled() {
+        //reset queued action variables
+        this.clearCommandQueue();
+        
+        alert("The tables are left in improper state because the calculation was aborted. :( ");
+    }
+
+    /** This should be called when there is not a queued action. */
+    clearConsecutiveQueuedTracking() {
+        this.consecutiveActionCount = 0;
+        this.activeConsecutiveActionLimit = Model.CONSECUTIVE_ACTION_INITIAL_LIMIT;
+    }
+
+    /** This method resets the command queue */
+    clearCommandQueue() {
+        //reset queued action variables
+        this.messengerActionList = [];
+        this.clearConsecutiveQueuedTracking();
+    }
+
+
+    //------------------------------
+    // Parent Methods
+    //------------------------------
+
+    /** this method gets the hame the children inherit for the full name. */
+    getPossesionNameBase(model) {
+        //the name starts over at a new model
+        return "";
+    }
+
+    //------------------------------
+    //ContextHolder methods
+    //------------------------------
+
+    /** This method retrieve creates the loaded context manager. */
+    createContextManager() {
+        //set the context manager
+        var contextManager = new ContextManager(this);
+
+        //add an entry for this folder. This is for multiple folders in the model base
+        //which as of the time of this comment we don't have but plan on adding
+        //(at which time this comment will probably be left in by accident...)
+        var myEntry = {};
+        myEntry.contextHolderAsParent = true;
+        contextManager.addToContextList(myEntry);
+        
+        return contextManager;
+    }
+
+    //============================
+    // MemberMap Functions
+    //============================
+
+    lookupMemberById(memberId) {
+        let memberMap = this._getMemberMap();
+        return memberMap[memberId];
+    }
+
+    /** This method returns a mutable member for the given ID. If the member is already unlocked, that member will be
+     * returned. Otherwise a copy of the member will be made and stored as the active instance for the member ID.  */
+    getMutableMember(memberId) {
+        if(this.getIsLocked()) throw new Error("The model must be unlocked to get a mutable member.");
+
+        let member = this.lookupMemberById(memberId);
+        if(member) {
+            if(member.getIsLocked()) {
+                //create a unlocked copy of the member
+                let newMember = new member.constructor(member.getName(),member.getParentId(),member);
+
+                //update the saved copy of this member in the member map
+                this.registerMember(newMember);
+                return newMember;
+            }
+            else {
+                return member;
+            }
+        }
+        else {
+            return null;
+        }
+    }
+
+    registerMember(member) {
+        if(!this.workingMemberMap) {
+            this._populateWorkingMemberMap();
+        }
+
+        let memberId = member.getId();
+
+        //update the change map for this member change
+        let changeMapEntry = this.workingChangeMap[memberId];
+        if(!changeMapEntry) {
+            //if it already existed we don't need to change it (that means it was a create and we want to keep that)
+            //otherwise add a new entry
+            if(this.workingMemberMap[memberId]) {
+                //this is an update
+                this.workingChangeMap[memberId] = {action: "updated", instance: member};
+            }
+            else {
+                //this is a create
+                this.workingChangeMap[memberId] = {action: "created", instance: member};
+            }
+        }
+
+        //add or update the member in the working member map
+        this.workingMemberMap[memberId] = member;
+    }
+
+    unregisterMember(member) {
+        if(!this.workingMemberMap) {
+            this._populateWorkingMemberMap();
+        }
+
+        let memberId = member.getId();
+
+        //update the change map for this member change
+        let changeMapEntry = this.workingChangeMap[memberId];
+        if(changeMapEntry) {
+            if(changeMapEntry.action == "updated") {
+                changeMapEntry.action = "deleted";
+            }
+            else if(changeMapEntry.action == "created") {
+                //these cancel! however, we will keep the entry around and label
+                //it as "transient", in case we get another entry for this member
+                //I don't think we should get on after delete, but just in case
+                changeMapEntry.action = "transient";
+            }
+            else if(changeMapEntry.action == "transient") ;
+            else {
+                //this shouldn't happen. We will just mark it as delete
+                changeMapEntry.action = "deleted";
+            }
+        }
+        else {
+            changeMapEntry = {action: "deleted", instance: member};
+            this.workingChangeMap[memberId] = changeMapEntry;
+        }
+
+        //remove the member entry
+        delete this.workingMemberMap[memberId];
+    }
+
+    _getMemberMap() {
+        return this.workingMemberMap ? this.workingMemberMap : this.getField("memberMap");
+    }
+
+    /** This method makes a mutable copy of the member map, and places it in the working member map. */
+    _populateWorkingMemberMap() {
+        let memberMap = this.getField("memberMap");
+        let newMemberMap = {};
+        Object.assign(newMemberMap,memberMap);
+        this.workingMemberMap = newMemberMap;
+    }
+
+    //============================
+    // Impact List Functions
+    //============================
+
+    /** This returns an array of members this member impacts. */
+    getImpactsList(member) {
+        let impactsMap = this.getField("impactsMap");
+        let impactsList = impactsMap[member.getId()];
+        if(!impactsList) impactsList = [];
+        return impactsList;
+    }
     
-    return actionResult;
-};
+    /** This method adds a data member to the imapacts list for this node.
+     * The return value is true if the member was added and false if it was already there. 
+     * NOTE: the member ID can be a string or integer. This dependentMemberId should be an int. */
+    addToImpactsList(depedentMemberId,memberId) {
+        //don't let a member impact itself
+        if(memberId === depedentMemberId) return;
 
-//================================
-// Member generator functions
-//================================
+        let workingMemberImpactsList = this.getWorkingMemberImpactsList(memberId);
 
-Workspace.memberGenerators = {};
+        //add to the list iff it is not already there
+        if(workingMemberImpactsList.indexOf(depedentMemberId) === -1) {
+            workingMemberImpactsList.push(depedentMemberId);
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
 
-/** This methods retrieves the member generator for the given type. */
-Workspace.getMemberGenerator = function(type) {
-    return Workspace.memberGenerators[type];
-};
+    /** This method removes a data member from the imapacts list for this node. */
+    removeFromImpactsList(depedentMemberId,memberId) {
 
-/** This method registers the member generator for a given named type. */
-Workspace.addMemberGenerator = function(generator) {
-    Workspace.memberGenerators[generator.type] = generator;
-};
+        let workingMemberImpactsList = this.getWorkingMemberImpactsList(memberId);
 
-/** This method class is an action error object, to be used in an action return value. 
- * The error type is a classification string. If the error is associated with a member
- * the member can be set here. */
-function ActionError(msg,errorType,optionalMember) {
-    this.msg = (msg != null) ? msg : ActionError.UNKNOWN_ERROR_MESSAGE;
-    this.errorType = errorType;
-    this.member = optionalMember;
+        //it should appear only once
+        for(var i = 0; i < workingMemberImpactsList.length; i++) {
+            if(workingMemberImpactsList[i] == depedentMemberId) {
+                workingMemberImpactsList.splice(i,1);
+                return;
+            }
+        }
+    }
     
-    this.isFatal = false;
-    this.parentException = null;
+    /** This gets a edittable copy of a member impacts list.  */
+    getWorkingMemberImpactsList(memberId) {
+        //make sure our working impacts map is populated
+        //we will use this wile buildign the impacts map and then set the impacts map field
+        if(!this.workingImpactsMap) {
+            this._populateWorkingImpactsMap();
+        }
+
+        let memberImpactsList = this.workingImpactsMap[memberId];
+        if(!memberImpactsList) {
+            memberImpactsList = [];
+            this.workingImpactsMap[memberId] = memberImpactsList;
+        }
+
+        return memberImpactsList;
+    }
+
+    /** This method will load a mutable copy of the impacts map field to be used
+     * when we update the impacts map. We use a working variable since the reconstruction
+     * spans many calls to the add/remove function. In the copy, it makes a shallow copy of 
+     * each impacts list in the map. */
+    _populateWorkingImpactsMap() {
+        let impactsMap = this.getField("impactsMap");
+        let newImpactsMap = {};
+        for(let idString in impactsMap) {
+            let impactsList = impactsMap[idString];
+            //shallow copy each array
+            newImpactsMap[idString] = [...impactsList];
+        }
+        this.workingImpactsMap = newImpactsMap;
+    }
+
+    //============================
+    // Save and Load Functions
+    //============================
+
+    /** This saves the model */
+    toJson() {
+        let json = {};
+        json.fileType = Model.SAVE_FILE_TYPE;
+        json.version = Model.SAVE_FILE_VERSION;
+
+        json.name = this.getField("name");
+        json.children = {};
+        let childIdMap = this.getField("childIdMap");
+        for(var name in childIdMap) {
+            var childId = childIdMap[name];
+            let child = this.lookupMemberById(childId);
+            if(child) {
+                json.children[name] = child.toJson(this);
+            }
+        }
+
+        return json;
+    }
+
+    /** This method creates a headless model json from a folder json. It
+     * is used in the folder function. */
+    static createModelJsonFromFolderJson(name,folderJson) {
+        let json = {};
+        json.fileType = Model.SAVE_FILE_TYPE;
+        json.version = Model.SAVE_FILE_VERSION;
+
+        //let the workspace inherit the folder name
+        json.name = name;
+        json.children = {};
+
+        //attach a single child named main
+        json.children[folderJson.name] = folderJson;
+
+        return json
+    }
+
+    //================================
+    // Member generator functions
+    //================================
+
+    /** This methods retrieves the member generator for the given type. */
+    static getMemberGenerator(type) {
+        return memberGenerators[type];
+    }
+
+    /** This method registers the member generator for a given named type. */
+    static addMemberGenerator(generator) {
+        memberGenerators[generator.type] = generator;
+    }
+
 }
 
-/* Error type Application - This is an error caused by the application. This is
- * may be shown to the user in a dialog. */
-ActionError.ERROR_TYPE_APP = "AppException";
-/** Error Type Model - This is an error that arises from the user code. Note that
- * rather than using this error type, a alternate descriptive string may be used. */
-ActionError.ERROR_TYPE_MODEL = "ModelException";
-/** Error Type User - this is operator error. */
-ActionError.ERROR_TYPE_USER = "UserException";
+//add mixins to this class
+apogeeutil.mixin(Model,EventManager);
+apogeeutil.mixin(Model,ContextHolder);
+apogeeutil.mixin(Model,Parent);
 
-/** This is used as the error message when no other error message is given. */
-ActionError.UNKNOWN_ERROR_MESSAGE = "Unknown Error";
+let memberGenerators = {};
 
+Model.DEFAULT_MODEL_NAME = "Workspace";
+Model.ROOT_FOLDER_NAME = "Main";
 
-/** This sets the exception that triggered this error. */
-ActionError.prototype.setParentException = function(exception) {
-    this.parentException = exception;
-};
+/** This is the supported file type. */
+Model.SAVE_FILE_TYPE = "apogee model";
 
-/** This sets the exception that triggered this error. */
-ActionError.prototype.setIsFatal= function(isFatal) {
-    this.isFatal = isFatal;
-};
+/** This is the supported file version. */
+Model.SAVE_FILE_VERSION = 0.2;
 
-/** This returns true if this is a fatal error. */
-ActionError.prototype.getIsFatal= function() {
-    return this.isFatal;
-};
+Model.CONSECUTIVE_ACTION_INITIAL_LIMIT = 500;
 
-/** This gets the type of error. */
-ActionError.prototype.getType= function() {
-    return this.errorType;
-};
-
-/** This method processes a fatal application exception, returning an ActionError object
- * marked as fatal. This should be use when the app lication is left in an unknown state. 
- * The resulting error message is the message from the
- * exception. An optional prefix may be added using the argument optionalErrorMsgPrefix.
- * This method also prints the stack trace for the exception. */
-ActionError.processException = function(exception,type,defaultToFatal,optionalErrorMsgPrefix) {  
-    if(exception.stack) {
-        console.error(exception.stack);
-    }
-    var errorMsg = optionalErrorMsgPrefix ? optionalErrorMsgPrefix : "";
-    if(exception.message) errorMsg += exception.message;
-    if(errorMsg.length == 0) errorMsg = "Unknown error";
-    var actionError = new ActionError(errorMsg,type,null);
-    actionError.setParentException(exception);
-	
-    var isFatal;
-	if(exception.isFatal !== undefined) {
-		isFatal = exception.isFatal;
-	}
-	else {
-		isFatal = defaultToFatal;
-	}
-	
-    actionError.setIsFatal(isFatal);
-    return actionError;
-};
-
-ActionError.getListErrorMsg = function(errorList) {
-    var msgList = errorList.map( actionError => {
-        var msg = "";
-        if(actionError.member) {
-            msg += actionError.member.getName() + ": ";
+Model.EMPTY_MODEL_JSON = {
+    "fileType": "apogee model",
+    "version": 0.2,
+    "name": Model.DEFAULT_MODEL_NAME,
+    "children": {
+        "Main": {
+            "name": "Main",
+            "type": "apogee.Folder"
         }
-        msg += actionError.msg;
-        return msg;
-    });
-    return msgList.join(";\n");
+    }
 };
+
+/** This module contains functions to process an update to an member
+ * which inherits from the FunctionBase component. */
+
+
+/** This moethod should be called on an member (impactor or dependent) that changes.
+ * This will allow for any Dependents to be recaculated. */
+function addToRecalculateList(model,recalculateList,member) {
+    //if it is in the list, return
+    if(recalculateList.indexOf(member) >= 0) return;
+     
+    //add this member to recalculate list if it needs to be executed
+    if((member.isDependent)&&(member.memberUsesRecalculation())) {
+        recalculateList.push(member);
+        member.prepareForCalculate();
+    }
+        
+    addDependsOnToRecalculateList(model,recalculateList,member);
+}
+
+function addDependsOnToRecalculateList(model,recalculateList,member) {
+    //add any member that depends on this one  
+    var impactsList = model.getImpactsList(member);
+    for(var i = 0; i < impactsList.length; i++) {
+        let dependent = model.getMutableMember(impactsList[i]);
+        addToRecalculateList(model,recalculateList,dependent);
+    }
+}
+
+
+
+/** This calls execute for each member in the recalculate list. The return value
+ * is false if there are any errors. */
+function callRecalculateList(model,recalculateList) {
+    var dependent;
+    var i;
+    var success = true;
+    for(i = 0; i < recalculateList.length; i++) {
+        dependent = recalculateList[i];
+        if(dependent.getCalcPending()) {
+            dependent.calculate(model);   
+        }
+    }
+    
+    return success;
+}
+
+/**
+ * Action Module
+ * An action is an operation on the data model. A mutable (unlocked) model must be passed in. 
+ * After the action is completed, the model will be locked, and represent immutable data state.
+ * 
+ * The code in this module handles
+ * the generic parts of the action process, and the action specific code is placed
+ * elsewhere.
+ * 
+ * Generic Action:
+ * - The action is represented by a data object "actionData". 
+ * - The method doAction is called to exectue the action.
+ * - Available actions are registered through the method addActionInfo.
+ *   this allows the doAction method to dispatch the actionData to the proper
+ *   action specific code.
+ * - Included in doing that action is any updates to dependent tables and the 
+ * firing of any events for the changes.
+ *   
+ * Registering a specific action:
+ * To register a specific action, addActionInfo must be called with 
+ * the name of the action and the function taht executes the action. The function
+ * should be of the form: 
+ * actionResult = function actionFunction(model,actionData)
+ * 
+ * Action Data Format:
+ * The action data is used to pass data into the action specific code, Format:
+ * actionData format: {
+ *   "action": (The name of the action to execute),
+ *   "member": (The data object that is acted upon , if applicable),
+ *   (other, multiple): (Specific data for the action)
+ * }
+ * 
+ * ChangeResult:
+ * The return value of the doAction function is a change result. This is a listing of all data objects whcih changed, in the success case.
+ * The format is as follows:
+ * Format: {
+ *  actionDone: (true/false)
+ *  actionPending: (Rather than actionDone, actionPending will be returned if doAction is called while another action is in
+ *      process. This should only happen for actions being called by the messenger.)
+ *  errorMsg: (An error message in the case actionDone is false.)
+ *  model: (The model object which was acted on.)
+ *  changeList: (An array of changed objects:)
+ *      - event: (the change to the object: created/updated/deleted)
+ *      - model: (the model, if the object was the model)
+ *      - member: (the member, if the object was a member)
+ * }
+ *  *   "actionPending": (This flag is returned if the action is a queued action and will be run after the
+ *                  current action completes.)
+ * 
+ * ActionResult:
+ * The return value of the an action function (not the doAction function) is an ActionResult struct, with the data below. The function should return
+ * an action result for each member/model that changes. There should be a single top level action result and then there can be 
+ * child action results, in the childActionResults field. An important function of the action result is to tell the doAction function
+ * how to calculate updates to the model based on changes to specific members. The flags recalculateMember, recalculateDependsOnMember,
+ * updateMemberDependencies and updateModelDependencies serve this purpose and are described below.
+ * Format: {
+ *   "actionDone": (If this is returned true the action was done. This does not mean it was error free, rather
+ *                  if means the action completed and can be undone. For example, it may be setting code in a member
+ *                  and the code may be invalid. That is OK. It is displayed in the UI as an error and "actionDone" = true.
+ *                  ActionDone should be false there was an error such that the state of the program is compromised and the 
+ *                  action can not be undone. In this case, the program will keep the original state rather than adopting 
+ *                  the new state the results from the action.
+ *   "actionPending": (This flag is returned if the action is a queued action and will be run after the
+ *                  current action completes.)
+ *   "model": (The model on which the action is acting)
+ *   "member": (The object modified in the action, if it is a member. Another option is a model update, in which 
+ *                  case this field is left undefined, but a model event will be included. It is also possible that
+ *                  there is no member listed because the action result does not corrspond to an action on a member of 
+ *                  the model. This is true on the top level result of a compound action.)
+ *   "event": (This is the event that should be fired as a result of this action/actionResult. The options are:
+ *                  "created", "updated" and "deleted".)
+ *   "errorMsg": (This is the error message for is the actionDone is false)
+ *   "childActionResults" - (This is a list of action results if there are additional child actions done with this
+ *                  action. Examples where this is used are on creating, moving or deleting a folder that has chilren.)
+ *   "recalculateMember" - (This is an optional action flag. The is set of the member is a dependent and it must be recalculated.)
+ *   "recalculateDependsOnMember" - (This is an optional action flag. This is set if the member has its value changed, but the 
+ *                  member does not need to be recalculated. The members that depend on this do however need to be recalculated.)
+ *   "updateMemberDependencies" - (This is an optional action flag. The is set of the member is a dependent and it must have its dependencies
+ *                  recalculated, such as if the code changes.)
+ *   "updateModelDepedencies" - (This is an optional action flag. The is set of the member is a dependent and it is created, deleted or moved.
+ *                  In this case, all members in the model should be checked to see if they have any dependency changes.)
+ * }
+ * 
+ */ 
+
+/** This structure holds the processing information for all the actions. It is set by each action. 
+ * @private */
+let actionInfoMap = {
+};
+
+/** This method is used to execute an action for the data model. The model object passed in should be _unlocked_.
+ * At the completion of the action, before returning, the model will be locked, meaning it can not longer be changed. */
+function doAction(model,actionData) {
+    
+    //only allow one action at a time
+    if(model.isActionInProgress()) {
+        //this is a messenger action - we will save it and execute it after this computation cycle is complete
+        model.saveMessengerAction(actionData);
+        
+        //mark command as pending
+        let changeResult = {};
+        changeResult.actionPending = true;
+        return changeResult;
+    }
+    
+    //execute the main action
+    let {success, errorMsg} = internalDoAction(model,actionData);
+    if(!success) {
+        model.clearCommandQueue();
+        model.lockAll();
+
+        let changeResult = {};
+        changeResult.actionDone = false;
+        changeResult.model = model;
+        changeResult.errorMsg = errorMsg;
+        return changeResult;
+    }
+    
+    //trigger any pending actions
+    //these will be done asynchronously
+    var savedMessengerAction = model.getSavedMessengerAction();
+    if(savedMessengerAction) {
+        var runQueuedAction = true;
+
+        if(model.checkConsecutiveQueuedActionLimitExceeded()) {
+            //ask user if about continueing
+            var doContinue = confirm("The calculation is taking a long time. Continue?");
+            if(!doContinue) {
+                model.setCalculationCanceled();
+                model.lockAll();
+
+                let changeResult = {};
+                changeResult.actionDone = false;
+                changeResult.model = model;
+                changeResult.errorMsg = "The calculation was canceled";
+                return changeResult;         
+            }
+        }
+
+        if(runQueuedAction) {
+            //this action is run synchronously
+            let {success, errorMsg} = internalDoAction(model,savedMessengerAction);
+            if(!success) {
+                model.clearCommandQueue();
+                model.lockAll();
+
+                let changeResult = {};
+                changeResult.actionDone = false;
+                changeResult.model = model;
+                changeResult.errorMsg = errorMsg;
+                return changeResult;
+            }
+        }
+    }
+    else {
+        model.clearConsecutiveQueuedTracking();
+    } 
+    
+    //fire the events
+    let changeList = changeMapToChangeList(model.getChangeMap());
+    fireEvents(model,changeList);
+
+    //lock the model
+    model.lockAll();
+
+    //return result
+    let changeResult = {};
+    changeResult.actionDone = true;
+    changeResult.model = model;
+    changeResult.changeList = changeList;
+    return changeResult;
+}
+
+/** This function is used to register an action. */
+function addActionInfo(actionName,actionFunction) {
+    actionInfoMap[actionName] = actionFunction;
+}
+
+//=======================================
+// Internal Methods
+//=======================================
+
+/** This method executes a single action function, */
+function internalDoAction(model,actionData) {
+
+    let success, errorMsg;
+
+    //flag action in progress
+    model.setActionInProgress(true);  
+
+    try {
+
+        //do the action
+        let actionResult = callActionFunction(model,actionData); 
+        
+        //flatten action result tree into a list of objects modified in the action
+        var {actionModifiedMembers, actionDone, errorMsgList} = flattenActionResult(actionResult);
+
+        //return in the failure case
+        if(actionDone) {
+            //this list will be additional modified members - from dependency changes
+            //due to adding and deleting members (This happens when a new remote member is referenced
+            //a member formula because of creating or deleting. This is not a common event, but it does happen)
+            var additionalUpdatedMembers = [];
+            
+            //figure out other objects that need to be updated
+            //also update dependencies (and the inverse - impacts)
+            var updateAllDep = checkUpdateAllDep(actionModifiedMembers);
+            if(updateAllDep) {
+                //update entire model - see conditions bewlo
+                model.updateDependeciesForModelChange(additionalUpdatedMembers);
+            }
+            else {
+                updateDependenciesFromAction(model,actionModifiedMembers);
+            }
+
+            //commit the updated impacts map (inverse of dependency map) 
+            model.finalizeImpactsMap();
+            model.finalizeMemberMap();
+
+            //populate recalc list
+            let recalculateList = createRecalculateList(model,actionModifiedMembers,additionalUpdatedMembers);
+            
+            //recalculate all needed objects
+            callRecalculateList(model,recalculateList);
+
+            success = true;
+        }
+        else {
+            success = false;
+            errorMsg = errorMsgList.join("; ");
+        }
+
+    }
+	catch(error) {
+        if(error.stack) console.error(error.stack);
+        success = false;
+        errorMsg = "Unknown error updating model: " + error.message;
+    }
+
+    //flag action in progress
+    model.setActionInProgress(false);
+
+    return {success, errorMsg};
+}
+
+/** This function looks up the proper function for an action and executes it. */
+function callActionFunction(model,actionData) {
+
+    let actionResult;
+
+    //do the action
+    var actionFunction = actionInfoMap[actionData.action];
+    if(actionFunction) {
+        actionResult = actionFunction(model,actionData);
+    }
+    else {
+        actionResult = {};
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "Unknown action: " + actionData.action;
+    }  
+
+    return actionResult;
+}
+
+/** This method makes sure the member dependencies in the model are properly updated. 
+ * @private */
+function updateDependenciesFromAction(model,actionModifiedMembers) {
+    //upate dependencies on table with updated code
+    actionModifiedMembers.forEach(actionResult => {
+        if((actionResult.member)&&(actionResult.member.isCodeable)&&(actionResult.updateMemberDependencies)) {
+            actionResult.member.initializeDependencies(model);
+        }
+    });
+}
+
+/** This method takes the members that are updated (either by code or value) and
+ * adds them to the list of members that need to be recalculated. To do this, we must
+ * first have all dependencies updated, sicne it relies on the impacts list. */
+function createRecalculateList(model,actionModifiedMembers,additionalUpdatedMembers) {
+    let recalculateList = [];
+
+    //add members from each action and/or fields they impact, if applicable
+    actionModifiedMembers.forEach( actionResult => {
+        //update the recalc list
+        if(actionResult.recalculateMember) {
+            addToRecalculateList(model,recalculateList,actionResult.member);            
+        }
+        else if(actionResult.recalculateDependsOnMembers) {
+            addDependsOnToRecalculateList(model,recalculateList,actionResult.member);                         
+        }
+    });
+
+    //add any other modified members to the racalculate list
+    additionalUpdatedMembers.forEach(member => addToRecalculateList(model,recalculateList,member));
+
+    return recalculateList;
+}
+
+/** This function fires the proper events for the  It combines events to 
+ * fire a single event for each member.
+ * @private */
+function fireEvents(model,changeList) {
+    changeList.forEach(changeListEntry => {
+        model.dispatchEvent(changeListEntry.event,changeListEntry.instance);
+    });
+}
+
+function changeMapToChangeList(changeMap) {
+    let changeList = [];
+    for(let id in changeMap) {
+        let changeMapEntry = changeMap[id];
+
+        //ignore the transient objects
+        if(changeMapEntry.action == "transient") continue;
+
+        let changeListEntry = {};
+        changeListEntry.event = changeMapEntry.instance.getType() + "_" + changeMapEntry.action;
+        changeListEntry.instance = changeMapEntry.instance;
+        changeList.push(changeListEntry);
+    }
+    return changeList;
+}
+
+/** This method determines if updating all dependencies is necessary. Our dependency 
+ * tracking may be in error if a new member is created, a member is deleted or
+ * a member is moved. In these actions we flag that the entire model should be
+ * updated.*/
+function checkUpdateAllDep(completedResults) {
+    //return true if any results have the updateModelDependencies flag set
+    return completedResults.some(result => result.updateModelDependencies)
+}
+
+/** This method unpacks the actionResult and its child reponse into an array of actionResult. */
+function flattenActionResult(actionResult) {
+    let actionResultInfo = {};
+    actionResultInfo.actionModifiedMembers = [];
+    actionResultInfo.actionDone = true;
+    actionResultInfo.errorMsgList = [];
+
+    addToCompletedResultList(actionResultInfo,actionResult);
+
+    return actionResultInfo;
+}
+
+function addToCompletedResultList(actionResultInfo,actionResult) {
+    actionResultInfo.actionModifiedMembers.push(actionResult);
+    if(!actionResult.actionDone) actionResultInfo.actionDone = false;
+    if(actionResult.errorMsgList) actionResultInfo.errorMsgList.push(actionResult.errorMsg);
+
+    if(actionResult.childActionResults) {
+        actionResult.childActionResults.forEach( childActionResult => {
+            addToCompletedResultList(actionResultInfo,childActionResult);
+        });
+    }
+}
+
+//============================================
+// Compound Action
+//============================================
+
+/** The compound action is automatically imported when the action module is imported.
+ *
+ * Action Data format:
+ * {
+ *  "action": "compoundAction",
+ *  "actions": (list of actions in this compound action),
+ * }
+ */
+
+
+/** This method is the action function for a compound action. */
+function compoundActionFunction(model,actionData) {
+
+    let actionResult = {};
+
+    var actionList = actionData.actions;
+    actionResult.childActionResults = [];
+    for(var i = 0; i < actionList.length; i++) {
+        let childActionData = actionList[i];
+        let childActionResult = callActionFunction(model,childActionData);
+        actionResult.childActionResults.push(childActionResult);   
+    }
+    actionResult.actionDone = true;
+    return actionResult;
+}
+
+//This line of code registers the action 
+addActionInfo("compoundAction",compoundActionFunction);
 
 /*
   Copyright (c) jQuery Foundation, Inc. and Contributors, All Rights Reserved.
@@ -7154,21 +7553,17 @@ const EXCLUSION_NAMES = {
  * an exception if there is an error parsing.
  **/
 function analyzeCode(functionText) {
+
+    var returnValue = {};
     
     try {
-        var returnValue = {};
         var ast = exports$1.parse(functionText, { tolerant: true, loc: true });
     
         //check for errors in parsing
         if((ast.errors)&&(ast.errors.length > 0)) {
             returnValue.success = false;
-            returnValue.errors = [];
-            for(var i = 0; i < ast.errors.length; i++) {
-                var astError = ast.errors[i];
-                var actionError = new ActionError(astError.description,"Analyze - Code");
-                actionError.setParentException(astError);
-                returnValue.errors.push(actionError);
-            }
+            returnValue.errors = ast.errors;
+            return returnValue;
         }
         
         //get the variable list
@@ -7180,10 +7575,8 @@ function analyzeCode(functionText) {
         return returnValue;
     }
     catch(exception) {
-        var actionError = ActionError.processException(exception,"Analyze - Code",false);
-        returnValue.success = false;
         returnValue.errors = [];
-        returnValue.errors.push(actionError);
+        returnValue.errors.push(exception);
         return returnValue;
     }
 }
@@ -7502,7 +7895,7 @@ function markLocalVariables(processInfo) {
  * }
  * @private */
 function createParsingError(errorMsg,location) {
-    var error = base.createError(errorMsg,false);
+    var error = new Error(errorMsg);
     if(location) {
         error.lineNumber = location.start.line;
         error.column = location.start.column;
@@ -7556,14 +7949,10 @@ function validateTableName(name) {
 
 /** This method analyzes the code and creates the object function and dependencies. 
  * The results are loaded into the passed object processedCodeData. */
-function processCode(codeInfo,codeLabel) {
+function processCode(argList,functionBody,supplementalCode,codeLabel) {
     
     //analyze the code
-    var combinedFunctionBody = createCombinedFunctionBody(
-        codeInfo.argList, 
-        codeInfo.functionBody, 
-        codeInfo.supplementalCode, 
-        codeLabel);
+    var combinedFunctionBody = createCombinedFunctionBody(argList,functionBody,supplementalCode,codeLabel);
         
     //get the accessed variables
     //
@@ -7578,13 +7967,24 @@ function processCode(codeInfo,codeLabel) {
     }
     else {
         compiledInfo.errors = analyzeOutput.errors;
+        compiledInfo.valid = false;
         return compiledInfo;
     }
 
-    //this generator creates two functions - a function that creates the member function
-    //and function that initializes external variables for that member fuction.
+    //create and execute the generator function to get the member function generator
+    //and the memberFunctionContextInitializer
     var generatorFunction = createGeneratorFunction(compiledInfo.varInfo, combinedFunctionBody);
-    compiledInfo.generatorFunction = generatorFunction;
+    try {
+        //get the generated fucntion
+        var generatedFunctions = generatorFunction();
+        compiledInfo.memberFunctionGenerator = generatedFunctions.memberGenerator;
+        compiledInfo.memberFunctionContextInitializer = generatedFunctions.initializer;  
+        compiledInfo.valid = true;                     
+    }
+    catch(ex) {
+        compiledInfo.errors = [ex];
+        compiledInfo.valid = false;
+    }
     
     return compiledInfo;   
 }
@@ -7625,6 +8025,10 @@ function createGeneratorFunction(varInfo, combinedFunctionBody) {
     
     var contextDeclarationText = "";
     var initializerBody = "";
+
+    //add the messenger as a local variable
+    contextDeclarationText += "var apogeeMessenger\n";
+    initializerBody += "apogeeMessenger = messenger\n";
     
     //set the context - here we only defined the variables that are actually used.
 	for(var baseName in varInfo) {        
@@ -7637,7 +8041,7 @@ function createGeneratorFunction(varInfo, combinedFunctionBody) {
         contextDeclarationText += "var " + baseName + ";\n";
         
         //add to the context setter
-        initializerBody += baseName + ' = contextManager.getValue("' + baseName + '");\n';
+        initializerBody += baseName + ' = contextManager.getValue(model,"' + baseName + '");\n';
     }
     
     //create the generator for the object function
@@ -7648,7 +8052,7 @@ function createGeneratorFunction(varInfo, combinedFunctionBody) {
         combinedFunctionBody
     );
         
-    var generatorFunction = new Function("apogeeMessenger",generatorBody);
+    var generatorFunction = new Function(generatorBody);
     return generatorFunction;    
 }
 
@@ -7697,7 +8101,7 @@ const GENERATOR_FUNCTION_FORMAT_TEXT = [
 "//declare context variables",
 "{0}",
 "//context setter",
-"function __initializer(contextManager) {",
+"function __initializer(model,contextManager,messenger) {",
 "{1}};",
 "",
 "//user code",
@@ -7715,8 +8119,8 @@ const GENERATOR_FUNCTION_FORMAT_TEXT = [
  * If the send fails, and exception will be thrown. */
 class Messenger {
     
-    constructor(fromMember) {
-        this.workspace = fromMember.getWorkspace();
+    constructor(model,fromMember) {
+        this.model = model;
         this.contextManager = fromMember.getContextManager();
         this.fromMember = fromMember;
     }
@@ -7738,18 +8142,11 @@ class Messenger {
         //set the data for the table, along with triggering updates on dependent tables.
         var actionData = {};
         actionData.action = "updateData";
-        actionData.memberName = member.getFullName();
+        actionData.memberId = member.getId();
         actionData.data = data;
         
-        //action is done later after the current action completes
-        actionData.onComplete = actionResult => {
-            if(!actionResult.actionDone) {
-                throw new Error("Error setting remote data: " + actionResult.alertMsg);
-            }
-        };
-        
         //return is handled above asynchronously
-        doAction(this.workspace,actionData);
+        doAction(this.model,actionData);
     }
 
     /** This is similar to dataUpdate except is allows multiple values to be set.
@@ -7771,7 +8168,7 @@ class Messenger {
             let data = updateEntry[1];
             
             subActionData.action = "updateData";
-            subActionData.memberName = member.getFullName();
+            subActionData.memberId = member.getId();
             subActionData.data = data;
             actionList.push(subActionData);
         }
@@ -7781,15 +8178,8 @@ class Messenger {
         actionData.action = "compoundAction";
         actionData.actions = actionList;
         
-        //action is done later after the current action completes
-        actionData.onComplete = actionResult => {
-            if(!actionResult.actionDone) {
-                throw new Error("Error setting remote data: " + actionResult.alertMsg);
-            }
-        };
-        
         //return is handled above asynchronously
-        doAction(this.workspace,actionData);
+        doAction(this.model,actionData);
     }
     
     //=====================
@@ -7800,1125 +8190,17 @@ class Messenger {
     /** This method returns the member instance for a given local member name,
      * as defined from the source object context. */
     _getMemberObject(localMemberName) { 
-        var path = localMemberName.split(".");
-        var member = this.contextManager.getMember(path);
+        var pathArray = localMemberName.split(".");
+        var member = this.contextManager.getMember(this.model,pathArray);
         return member;
     }
 }
 
-/** This is self installing command module. It has no exports
- * but it must be imported to install the command. 
- *
- * Action Data format:
- * {
- *  "action": "createMember",
- *  "owner": (parent/owner for new member),
- *  "name": (name of the new member),
- *  "createData": 
- *      - name
- *      - unique table type name
- *      - additional table specific data
- *  
- * }
- *
- * MEMBER CREATED EVENT: "memberCreated"
- * Event member format:
- * {
- *  "member": (member)
- * }
- */
-
-
-/** This method instantiates a member, without setting the update data. 
- *@private */
-function createMember(workspace,actionData,processedActions,actionResult) {
-    
-    var owner;
-    if(actionData.workspaceIsOwner) {
-        owner = workspace;
-    }
-    else {
-        var ownerFullName = actionData.ownerName;
-        var owner = workspace.getMemberByFullName(ownerFullName);
-        if(!owner) {
-            actionResult.actionDone = false;
-            actionResult.alertMsg = "Parent not found for created member";
-            return;
-        }
-    }
- 
-    createMemberImpl(owner,actionData,processedActions);
-}
- 
-    
-function createMemberImpl(owner,actionData,actionResult) {
-    
-    var memberJson = actionData.createData;
-    var member;
-     
-    //create member
-    var generator;
-    if(memberJson) {
-        generator = Workspace.getMemberGenerator(memberJson.type);
-    }
-
-    if(generator) {
-        member = generator.createMember(owner,memberJson);   
-
-        //instantiate children if there are any
-        if(memberJson.children) {
-            actionResult.childActionResults = {};
-            for(var childName in memberJson.children) {
-                var childActionData = {};
-                childActionData.action = "createMember";
-                childActionData.createData = memberJson.children[childName];
-                var childActionResult = {};
-                childActionResult.actionInfo = ACTION_INFO;
-                createMemberImpl(member,childActionData,childActionResult);
-                actionResult.childActionResults[childName] = childActionResult;
-            }
-        }
-    }
-    else {
-        //type not found! - create a dummy object and add an error to it
-        var errorTableGenerator = Workspace.getMemberGenerator("appogee.ErrorTable");
-        member = errorTableGenerator.createMember(owner,memberJson);
-        var error = new ActionError("Member type not found: " + memberJson.type,ActionError.ERROR_TYPE_APP,null);
-        member.addError(error);
-        
-        //store an error message, but this still counts as command done.
-        actionResult.alertMsg = "Error creating member: member type not found: " + memberJson.type;
-    }
-
-    actionResult.member = member;
-    actionResult.actionDone = true;
-}
-
-/** Action info */
-let ACTION_INFO = {
-    "action": "createMember",
-    "actionFunction": createMember,
-    "checkUpdateAll": true,
-    "updateDependencies": true,
-    "addToRecalc": true,
-    "event": "memberCreated"
-};
-
-//This line of code registers the action 
-addActionInfo(ACTION_INFO);
-
-/** This is self installing command module. It has no exports
- * but it must be imported to install the command. 
- *
- * Action Data format:
- * {
- *  "action": "updateData",
- *  "memberName": (member to update),
- *  "data": (new value for the table)
- *  "sourcePromise": (OPTIONAL - If this is the completion of an asynchronous action, the
- *      source promise shoudl be included to make sure it has not been overwritten with a
- *      more recent operation.)
- *  "promiseRefresh": (OPTIONAL - If this action reinstates a previously set promise,
- *      this flag will prevent setting additional then/catch statements on the promise)
- * }
- * 
- * Action Data format:
- * {
- *  "action": "updateCode",
- *  "memberName": (member to update),
- *  "argList": (arg list for the table)
- *  "functionBody": (function body for the table)
- *  "supplementalCode": (supplemental code for the table)
- * }
- */
-
-
-/** member UPDATED EVENT: "memberUpdated"
- * Event member format:
- * {
- *  "member": (member)
- * }
- */
-
-
-/** Update code action function. */
-function updateCode(workspace,actionData,actionResult) {
-    
-    var memberFullName = actionData.memberName;
-    var member = workspace.getMemberByFullName(memberFullName);
-    if(!member) {
-        actionResult.actionDone = false;
-        actionResult.errorMsg = "Member not found for update member code";
-        return;
-    }
-    actionResult.member = member;
-
-    if((!member.isCodeable)||(!member.getSetCodeOk())) {
-        actionResult.actionDone = false;
-        actionResult.errorMsg = "can not set code on member: " + member.getFullName();
-        return;
-    }
-          
-    member.applyCode(actionData.argList,
-        actionData.functionBody,
-        actionData.supplementalCode);
-        
-    
-    actionResult.actionDone = true;
-}
-
-/** Update data action function. */
-function updateData(workspace,actionData,actionResult) {
-    
-    var memberFullName = actionData.memberName;
-    var member = workspace.getMemberByFullName(memberFullName);
-    if(!member) {
-        actionResult.actionDone = false;
-        actionResult.errorMsg = "Member not found for update member data";
-        return;
-    }
-    actionResult.member = member;
-    
-    if(!member.getSetDataOk()) {
-        actionResult.actionDone = false;
-        actionResult.errorMsg = "Can not set data on member: " + memberFullName;
-        return;
-    }
-        
-    var data = actionData.data;
-    
-    //if this is the resolution (or rejection) of a previously set promise
-    if(actionData.sourcePromise) {
-        if(member.pendingPromiseMatches(actionData.sourcePromise)) {
-            //this is the reoslution of pending data
-            member.setResultPending(false);
-        }
-        else {
-            //no action - this is from an asynch action that has been overwritten
-            actionResult.actionDone = false;
-            return;
-        }
-    }
-    
-    //some cleanup for new data
-    member.clearErrors();
-    if((member.isCodeable)&&(actionData.sourcePromise === undefined)) {
-        //clear the code - so the data is used
-        //UNLESS this is a delayed set date from a promise, in what case we want to keep the code.
-        member.clearCode();
-    }
-    
-    //handle four types of data inputs
-    if(data instanceof Promise) {
-        //data is a promise - will be updated asynchromously
-        
-        //check if this is only a refresh
-        var optionalPromiseRefresh = actionData.promiseRefresh ? true : false;
-        
-        member.applyPromiseData(data,actionData.onAsynchComplete,optionalPromiseRefresh);
-    }
-    else if(data instanceof Error) {
-        //data is an error
-        var actionError = ActionError.processException(data,ActionError.ERROR_TYPE_MODEL);
-        member.addError(actionError);
-    }
-    else if(data === apogeeutil.INVALID_VALUE) {
-        //data is an invalid value
-        member.setResultInvalid(true);
-    }
-    else {
-        //normal data update (poosibly from an asynchronouse update)
-        member.setData(data);
-    }
-    
-    actionResult.actionDone = true;
-}
-        
-/** Update data action info */
-let UPDATE_DATA_ACTION_INFO = {
-    "action": "updateData",
-    "actionFunction": updateData,
-    "checkUpdateAll": false,
-    "updateDependencies": true,
-    "addToRecalc": false,
-    "addDependenceiesToRecalc": true,
-    "event": "memberUpdated"
-};
-
-/** Update code action info */
-let UPDATE_CODE_ACTION_INFO = {
-    "action": "updateCode",
-    "actionFunction": updateCode,
-    "checkUpdateAll": false,
-    "updateDependencies": true,
-    "addToRecalc": true,
-    "event": "memberUpdated"
-};
-
-
-//The following code registers the actions
-addActionInfo(UPDATE_DATA_ACTION_INFO);
-addActionInfo(UPDATE_CODE_ACTION_INFO);
-
-/** This is self installing command module. It has no exports
- * but it must be imported to install the command. 
- *
- * Action Data format:
- * {
- *  "action": "moveMember",
- *  "member": (member to move),
- *  
- *  "eventInfo": (OUTPUT - event info for the associated delete event)
- * }
- */
-
-/** Move member action function */
-function moveMember(workspace,actionData,actionResult) {
-        
-    var memberFullName = actionData.memberName;
-    var member = workspace.getMemberByFullName(memberFullName);
-    if(!member) {
-        actionResult.actionDone = false;
-        actionResult.errorMsg = "Member not found for move member";
-        return;
-    }
-    actionResult.member = member;
-    
-    var targetOwnerFullName = actionData.targetOwnerName;
-    var targetOwner = workspace.getMemberByFullName(targetOwnerFullName);
-    if(!targetOwner) {
-        actionResult.actionDone = false;
-        actionResult.errorMsg = "New parent not found for move member";
-        return;
-    }
-        
-    member.move(actionData.targetName,targetOwner);
-    actionResult.actionDone = true;
-    
-    //add the child action results
-    addChildResults(member,actionResult);
-}
-
-function addChildResults(member,actionResult) {
-    
-    if(member.isParent) {
-        actionResult.childActionResults = {};
-        
-        var childMap = member.getChildMap();
-        for(var childName in childMap) {
-            var child = childMap[childName];
-            let childActionResult = {};
-            childActionResult.actionDone = true;
-            childActionResult.member = child;
-            childActionResult.actionInfo = ACTION_INFO$1;
-            
-            actionResult.childActionResults[childName] = childActionResult;
-            
-            //add results for children to this member
-            addChildResults(child,childActionResult);
-        }
-    }
-    else if(member.isRootHolder) {
-        actionResult.childActionResults = {};
-        
-        var root = member.getRoot();
-        let childActionResult = {};
-        childActionResult.actionDone = true;
-        childActionResult.member = root;
-        childActionResult.actionInfo = ACTION_INFO$1;
-
-        actionResult.childActionResults["root"] = childActionResult;
-        
-        //add results for children to this member
-        addChildResults(root,childActionResult);
-    }
-}
-
-
-/** Action info */
-let ACTION_INFO$1 = {
-    "action": "moveMember",
-    "actionFunction": moveMember,
-    "checkUpdateAll": true,
-    "updateDependencies": true,
-    "addToRecalc": true,
-    "event": "memberUpdated"
-};
-
-
-//This line of code registers the action 
-addActionInfo(ACTION_INFO$1);
-
-/** This is self installing command module. It has no exports
- * but it must be imported to install the command. 
- *
- * Action Data format:
- * {
- *  "action": "deleteMember",
- *  "member": (member to delete),
- *  
- *  "eventInfo": (OUTPUT - event info for the associated delete event)
- * }
- *
- * MEMBER DELETED EVENT: "memberDeleted"
- * Event object Format:
- * {
- *  "member": (member),
- *  }
- */
-
-
-/** Delete member action function */
-function deleteMember(workspace,actionData,actionResult) {
-    
-    var memberFullName = actionData.memberName;
-    var member = workspace.getMemberByFullName(memberFullName);
-    if(!member) {
-        actionResult.actionDone = false;
-        actionResult.errorMsg = "Member not found for delete member";
-        return;
-    }
-    actionResult.member = member;
-    
-    doDelete(member,actionResult);
-    
-}
-
-
-/** @private */
-function doDelete(member,actionResult) {
-    
-    //delete children
-    if(member.isParent) {
-        actionResult.childActionResults = {};
-        
-        var childMap = member.getChildMap();
-        for(var childName in childMap) {
-            var child = childMap[childName];
-            let childActionResult = {};
-            childActionResult.member = child;
-            childActionResult.actionInfo = ACTION_INFO$2;
-            
-            actionResult.childActionResults[childName] = childActionResult;
-            
-            //add results for children to this member
-            doDelete(child,childActionResult);
-        }
-    }
-    else if(member.isRootHolder) {
-        actionResult.childActionResults = {};
-        
-        var root = member.getRoot();
-        let childActionResult = {};
-        childActionResult.member = root;
-        childActionResult.actionInfo = ACTION_INFO$2;
-
-        actionResult.childActionResults["root"] = childActionResult;
-        
-        //add results for children to this member
-        doDelete(child,childActionResult);
-    }
-    
-    //delete member
-    member.onDeleteMember();
-    if(member.isDependent) {
-        member.onDeleteDependent();
-    }
-    
-    actionResult.actionDone = true;
-}
-
-
-/** Action info */
-let ACTION_INFO$2 = {
-    "action": "deleteMember",
-    "actionFunction": deleteMember,
-    "checkUpdateAll": true,
-    "updateDependencies": false,
-    "addToRecalc": false,
-    "event": "memberDeleted"
-};
-
-
-//This line of code registers the action 
-addActionInfo(ACTION_INFO$2);
-
-/** This is self installing command module. It has no exports
- * but it must be imported to install the command. 
- *
- * Action Data format:
- * {
- *  "action": "updateFolderFunction",
- *  "member": (member to move),
- *  "argList": (argument list, as an array of strings)
- *  "returnValueString": (name of the return value table)
- *  
- *  "eventInfo": (OUTPUT - event info for the associated delete event)
- * }
- */
-
-/** Update folder function action function */
-function updateProperties(workspace,actionData,actionResult) { 
-    
-    var memberFullName = actionData.memberName;
-    var folderFunction = workspace.getMemberByFullName(memberFullName);
-    if(!folderFunction) {
-        actionResult.actionDone = false;
-        actionResult.errorMsg = "Member not found for update member code";
-        return;
-    }
-    actionResult.member = folderFunction;
-    
-    folderFunction.setArgList(actionData.argList);
-    folderFunction.setReturnValueString(actionData.returnValueString);
-    
-    actionResult.actionDone = true;
-}
-
-/** Action info */
-let ACTION_INFO$3 = {
-    "action": "updateFolderFunction",
-    "actionFunction": updateProperties,
-    "checkUpdateAll": false,
-    "updateDependencies": false,
-    "addToRecalc": true,
-    "event": "memberUpdated"
-};
-
-
-//This line of code registers the action 
-addActionInfo(ACTION_INFO$3);
-
-/** This is self installing command module. It has no exports
- * but it must be imported to install the command. 
- *
- * Action Data format:
- * {
- *  "action": "updateWorkspace",
- *  "workspace": (workspace to update),
- *  "properties": (properties to set) //currently only "name"
- * }
- *
- * member UPDATED EVENT: "workspaceUpdated"
- * Event member format:
- * {
- *  "member": (member)
- * }
- */
-
-/** Update code action function. */
-function updateWorkspace(workspace,actionData,actionResult) { 
-    
-    var properties = actionData.properties;
-    if(properties) {
-        if(properties.name) workspace.setName(properties.name);
-    }
-    
-    actionResult.actionDone = true;
-}
-
-/** Update data action info */
-let ACTION_INFO$4 = {
-    "action": "updateWorkspace",
-    "actionFunction": updateWorkspace,
-    "checkUpdateAll": false,
-    "updateDependencies": false,
-    "addToRecalc": false,
-    "addDependenceiesToRecalc": false,
-    "event": "workspaceUpdated"
-};
-
-//The following code registers the actions
-addActionInfo(ACTION_INFO$4);
-
-/** This component encapsulates the member functionality for objects in the workspace.
- * 
- * This is a mixin and not a class. It is used for the prototype of the objects that inherit from it.
- *  
- * COMPONENT DEPENDENCIES:
- * 
- * FIELD NAMES (from update event):
- * - data
- * - name
- * - owner
- * 
- */
-let Member = {};
-    
-/** This serves as the constructor for the member object, when extending it. 
- * The owner should be the parent that holds this member or the object that holds
- * the hierarchy (maybe the workspace). If the owner is not a parent, this is typically
- * a folder and it is called the root folder. */
-Member.init = function(name,generator) {
-    this.id = Member._createId();
-    this.name = name;
-    
-    this.data = null;
-    this.impactsList = [];
-    
-    this.generator = generator;
-    this.errors = []; 
-    this.resultInvalid = false;
-    this.resultPending = false;
-    
-    this.updated = {};
-    
-    //set updated in constructor
-    this.fieldUpdated("name");
-    this.fieldUpdated("data");
-};
-
-Member.initOwner = function(owner) {
-    if(this.owner != owner) {
-        this.fieldUpdated("owner");
-    }
-    
-    this.owner = owner;
-    if(owner.isParent) {
-        this.owner.addChild(this);
-    }
-    else if(owner.isRootHolder) {
-        this.owner.setRoot(this);
-    }
-};
-
-Member.move = function(newName,newOwner) {
-
-    //remove from old owner
-    if(this.owner) {
-        if(this.owner.isParent) {
-            this.owner.removeChild(this);
-        }
-    }
-    
-    //check for change of name
-    if(newName != this.name) {
-        this.fieldUpdated("name");
-        
-        this.name = newName;
-    }
-    
-    //place in the new owner or update the name in the old owner
-    //owner field updated here
-    this.initOwner(newOwner);
-};
-
-/** This property tells if this object is a member.
- * This property should not be implemented on non-members. */
-Member.isMember = true;
-
-/** this method gets the ID. It is not persistent and is valid only for this 
- * instance the workspace is opened. */
-Member.getId = function() {
-    return this.id;
-};
-
-/** this method gets the name. */
-Member.getName = function() {
-    return this.name;
-};
-
-/** This method returns the full name in dot notation for this object. */
-Member.getFullName = function() {
-    if(this.owner) {
-        return this.owner.getChildFullName(this.name);
-    }
-    else {
-        //this shouldn't happen
-        return this.name;
-    }
-};
-
-/** This returns the owner for this member. */
-Member.getOwner = function() {
-    return this.owner;
-};
-
-/** This returns the parent for this member. For the root folder
- * this value is null. */
-Member.getParent = function() {
-    if((this.owner)&&(this.owner.isParent)) {
-        return this.owner;
-    }
-    else {
-        return null;
-    }
-};
-
-/** this method gets the workspace. */
-Member.getWorkspace = function() {
-   if(this.owner) {
-       return this.owner.getWorkspace();
-   }
-   else {
-       return null;
-   }
-};
-
-/** this method gets the root folder/namespace for this object. */
-Member.getRoot = function() {
-    var ancestor = this;
-	while(ancestor) {
-		var owner = ancestor.getOwner();
-        if(!owner) {
-            return null;
-        }
-        else if(!owner.isParent) {
-            return ancestor;
-        }
-        ancestor = owner;
-	} 
-	return null; //this shouldn't happen
-};
-
-/** This method sets the pre calc error for this dependent. */
-Member.addError = function(error) {
-    this.errors.push(error);
-};
-
-/** This method sets the pre calc error for this dependent. */
-Member.addErrors = function(errorList) {
-    this.errors = this.errors.concat(errorList);
-};
-
-/** This method clears the error list. */
-Member.clearErrors = function(type) {
-    var newList = [];
-    if(type != null) {    
-        for(var i = 0; i < this.errors.length; i++) {
-            var entry = this.errors[i];
-            if(entry.type != type) {
-                newList.push(entry);
-            }
-        }
-    }
-    this.errors = newList;
-};
-
-/** This returns true if there is a pre calc error. */
-Member.hasError = function() {
-    return (this.errors.length > 0);
-};
-
-/** This returns the pre calc error. */
-Member.getErrors = function() {
-    return this.errors;
-};
-
-/** This returns true if the member is not up to date, typically
- * do to waiting on an asynchronous operation. */
-Member.getResultPending = function() {
-    return this.resultPending;
-};
-
-/** This returns true if the member is not up to date, typically
- * do to waiting on an asynchronous operation. */
-Member.getPendingPromise = function() {
-    return this.pendingPromise;
-};
-
-/** This sets the result pending flag. If is pending is set to true and
- * this is the object whose value is pending (as opposed to a member that 
- * is dependent on the pending member) the promise should be saved. This 
- * is used to ensure only a matching asynchronous action is kept. */
-Member.setResultPending = function(isPending,promise) {
-    this.resultPending = isPending;
-    this.pendingPromise = promise;
-};
-
-/** This returns true if the member is invalid, typically
- * meaning the calculation could not properly be performed becase the
- * needed data is not available. */
-Member.getResultInvalid = function() {
-    return this.resultInvalid;
-};
-
-/** This sets the result invalid flag. If the result is invalid, any
- * table depending on this will also have an invalid value. */
-Member.setResultInvalid = function(isInvalid) {
-    this.resultInvalid = isInvalid;
-};
-
-/** This returns true if the pending token matches. */
-Member.pendingPromiseMatches = function(promise) {
-    return (this.pendingPromise === promise);
-};
-
-Member.getSetDataOk = function() {
-    return this.generator.setDataOk;
-};
-
-/** This method writes the child to a json. */
-Member.toJson = function() {
-	var json = {};
-    json.name = this.name;
-    json.type = this.generator.type;
-    if(this.addToJson) {
-        this.addToJson(json);
-    }
-    
-    if(this.getUpdateData) {
-        var updateData = this.getUpdateData();
-        json.updateData = updateData;
-    }
-    return json;
-};
-
-///** This method creates a member from a json. IT should be implemented as a static
-// * function in extending objects. */ 
-//Member.fromJson = function(owner,json,childrenJsonOutputList) {
-//}
-
-//-----------------------------------
-// Data methods
-//-----------------------------------
-
-/** this method gets the data map. */
-Member.getData = function() {
-    return this.data;
-};
-
-/** This returns an array of members this member impacts. */
-Member.getImpactsList = function() {
-    return this.impactsList;
-};
-
-/** This method sets the data for this object. This is the object used by the 
- * code which is identified by this name, for example the JSON object associated
- * with a JSON table. Besides hold the data object, this updates the parent data map. */
-Member.setData = function(data) {
-    this.data = data;
-    this.fieldUpdated("data");
-  
-    var parent = this.getParent();
-    if(parent) {
-        parent.updateData(this);
-    }
-};
-
-
-/** This method implements setting asynchronous data on the member using a promise. */
-Member.applyPromiseData = function(promise,onAsynchComplete,optionalPromiseRefresh) {
-    //set the result as pending
-    this.setResultPending(true,promise);
-
-    //kick off the asynch update, if this is not only a refresh of the promise
-    if(!optionalPromiseRefresh) {
-        var workspace = this.getWorkspace();
-        var asynchCallback = memberValue => {
-            //set the data for the table, along with triggering updates on dependent tables.
-            let actionData = {};
-            actionData.action = "updateData";
-            actionData.memberName = this.getFullName();
-            actionData.sourcePromise = promise;
-            actionData.data = memberValue;
-            if(onAsynchComplete) {
-                actionData.onComplete = onAsynchComplete;
-            }
-            doAction(workspace,actionData);
-        };
-        var asynchErrorCallback = errorMsg => {
-            let actionData = {};
-            actionData.action = "updateData";
-            actionData.memberName = this.getFullName();
-            actionData.sourcePromise = promise;
-            actionData.data = new Error(errorMsg);
-            if(onAsynchComplete) {
-                actionData.onComplete = onAsynchComplete;
-            }
-            doAction(workspace,actionData);
-        };
-
-        //call appropriate action when the promise completes
-        promise.then(asynchCallback).catch(asynchErrorCallback);
-    }
-};
-
-//========================================
-// "Protected" Methods
-//========================================
-
-/** This method is called when the member is deleted. If necessary the implementation
- * can extend this function, but it should call this base version of the function
- * if it does.  
- * @protected */
-Member.onDeleteMember = function() {
-    if(!(this.owner)) return;
-    
-	if(this.owner.isParent) {
-		this.owner.removeChild(this);
-	}
-    else if(this.owner.isRootHolder) {
-        this.owner.setRoot(null);
-    }
-    this.owner = null;
-};
-
-///** This method is called when the workspace is closed and also when an object
-// * is deleted. It should do any needed cleanup for the object.  
-// * @protected */
-//Member.onClose = function();
-
-//Implement this method if there is data to add to this member. Otherwise it may
-//be omitted
-///** This method adds any additional data to the json saved for this member. 
-// * @protected */
-//Member.addToJson = function(json) {
-//}
-
-//Implement this method if there is update data for this json. otherwise it may
-//be omitted
-///** This gets an update structure to upsate a newly instantiated member
-//* to match the current object. It may return "undefined" if there is no update
-//* data needed. 
-//* @protected */
-//Member.getUpdateData = function() {
-//}
-
-//-------------------------
-// Update Event Methods
-//-------------------------
-
-Member.getUpdated = function() {
-    return this.updated;
-};
-
-Member.clearUpdated = function() {
-    this.updated = {};
-};
-
-Member.fieldUpdated = function(field) {
-    this.updated[field] = true;
-};
-
-
-//===================================
-// Private Functions
-//===================================
-
-/** This method adds a data member to the imapacts list for this node.
- * The return value is true if the member was added and false if it was already there. 
- * @private */
-Member.addToImpactsList = function(member) {
-    //exclude this member
-    if(member === this) return;
-    
-    //add to the list iff it is not already there
-    if(this.impactsList.indexOf(member) === -1) {
-        this.impactsList.push(member);
-        return true;
-    }
-    else {
-        return false;
-    }
-};
-
-/** This method removes a data member from the imapacts list for this node. 
- * @private */
-Member.removeFromImpactsList = function(member) {
-    //it should appear only once
-    for(var i = 0; i < this.impactsList.length; i++) {
-        if(this.impactsList[i] == member) {
-            this.impactsList.splice(i,1);
-            return;
-        }
-    }
-};
-
-/** This is used for Id generation.
- * @private */
-Member.nextId = 1;
-
-/** This method generates a member ID for the member. It is only valid
- * for the duration the workspace is opened. It is not persisted.
- * @private
- */
-Member._createId = function() {
-    return Member.nextId++;
-};
-
-/** This mixin encapsulates an member whose value depends on on another
- * member. The dependent allows for a recalculation based on an update of the 
- * objects it depends on.
- * 
- * This is a mixin and not a class. It is used for the prototype of the objects that inherit from it.
- * 
- * COMPONENT DEPENDENCIES:
- * - A Dependent must be a Member.
- * 
- */
-let Dependent$1 = {};
-
-/** This initializes the component */
-Dependent$1.init = function() {
-    
-    //this is the list of dependencies
-    this.dependsOnList = [];
-    this.calcPending = false;
-};
-
-/** This property tells if this object is a dependent.
- * This property should not be implemented on non-dependents. */
-Dependent$1.isDependent = true;
-
-/** This returns a list of the members that this member depends on. */
-Dependent$1.getDependsOn = function() {
-    return this.dependsOnList;
-};
-
-/** This returns the calc pending flag.  */
-Dependent$1.getCalcPending = function() {
-    return this.calcPending;
-};
-
-/** This sets the calc pending flag to false. It should be called when the 
- * calcultion is no longer needed.  */
-Dependent$1.clearCalcPending = function() {
-    this.calcPending = false;
-};
-
-//Must be implemented in extending object
-///** This method udpates the dependencies if needed because
-// *a variable was added or removed from the workspace.  */
-//Dependent.updateDependeciesForModelChange = function(object);
-
-///** This is a check to see if the object should be checked for dependencies 
-// * for recalculation. It is safe for this method to always return false and
-// allow the calculation to happen. 
-// * @private */
-//Dependent.needsCalculating = function();
-
-/** This does any init needed for calculation.  */
-Dependent$1.prepareForCalculate = function() {
-    this.clearErrors();
-    this.setResultPending(false);
-    this.setResultInvalid(false);
-    this.calcPending = true;
-};
-
-///** This updates the member based on a change in a dependency.  */
-//Dependent.calculate = function();
-
-/** This method makes sure any impactors are set. It sets a dependency 
- * error if one or more of the dependencies has a error. */
-Dependent$1.initializeImpactors = function() {
-    var errorDependencies = [];
-    var resultPending = false;
-    var resultInvalid = false;
-    
-    //make sure dependencies are up to date
-    for(var i = 0; i < this.dependsOnList.length; i++) {
-        var impactor = this.dependsOnList[i];
-        if((impactor.isDependent)&&(impactor.getCalcPending())) {
-            impactor.calculate();
-        }
-        if(impactor.hasError()) {
-            errorDependencies.push(impactor);
-        } 
-        else if(impactor.getResultPending()) {
-            resultPending = true;
-        }
-        else if(impactor.getResultInvalid()) {
-            resultInvalid = true;
-        }
-    }
-
-    if(errorDependencies.length > 0) {
-        this.createDependencyError(errorDependencies);
-    }
-    else if(resultPending) {
-        this.setResultPending(true,null);
-    }
-    else if(resultInvalid) {
-        this.setResultInvalid(true);
-    }
-};
-
-/** This method does any needed cleanup when the dependent is depeted.. */
-Dependent$1.onDeleteDependent = function() {
-    //remove this dependent from the impactor
-    for(var i = 0; i < this.dependsOnList.length; i++) {
-        var remoteMember = this.dependsOnList[i];
-        //remove from imacts list
-        remoteMember.removeFromImpactsList(this);
-    }
-};
-//===================================
-// Private Functions
-//===================================
-
-/** This sets the dependencies based on the code for the member. */
-Dependent$1.updateDependencies = function(newDependsOn) {
-    
-    var dependenciesUpdated = false;
-    
-    if(!newDependsOn) {
-        newDependsOn = [];
-    }
-    
-	//retireve the old list
-    var oldDependsOn = this.dependsOnList;
-	
-    //create the new dependency list
-	this.dependsOnList = [];
-	
-    //update the dependency links among the members
-	var newDependencySet = {};
-    var remoteMember;
-    var i;
-    for(i = 0; i < newDependsOn.length; i++) {
-        remoteMember = newDependsOn[i];
-			
-        this.dependsOnList.push(remoteMember);
-
-        //update this member
-        var isNewAddition = remoteMember.addToImpactsList(this);
-        if(isNewAddition) {
-            dependenciesUpdated = true;
-        }
-
-        //create a set of new member to use below
-        newDependencySet[remoteMember.getId()] = true;
-		
-    }
-	
-    //update for links that have gotten deleted
-    for(i = 0; i < oldDependsOn.length; i++) {
-        remoteMember = oldDependsOn[i];
-		
-		var stillDependsOn = newDependencySet[remoteMember.getId()];
-		
-		if(!stillDependsOn) {
-			//remove from imacts list
-			remoteMember.removeFromImpactsList(this);
-            dependenciesUpdated = true;
-		}
-    }
-//    this.dependenciesSet = true;
-    
-    return dependenciesUpdated;
-};
-
-/** This method creates an dependency error, given a list of impactors that have an error. 
- * @private */
-Dependent$1.createDependencyError = function(errorDependencies) {
-        //dependency error found
-        var message = "Error in dependency: ";
-        for(var i = 0; i < errorDependencies.length; i++) {
-            if(i > 0) message += ", ";
-            message += errorDependencies[i].getFullName();
-        }
-        var actionError = new ActionError(message,"Calculation - Dependency",this);
-        this.addError(actionError);   
-
-};
-
 /** This method takes the varInfo table from the code analysis and returns
  * a lit of member objects which this member depends on.
  */
-function getDependencyInfo(varInfo,contextManager) {
-    var dependencyList = [];
-	var objectMap = {};
+function getDependencyInfo(varInfo,model,contextManager) {
+	var dependsOnMap = {};
 	
 	//cycle through the variables used
 	for(var baseName in varInfo) {
@@ -8931,22 +8213,626 @@ function getDependencyInfo(varInfo,contextManager) {
                 //look up the object
                 var namePath = nameUse.path;
 
-                //lookup this object
-                var impactor = contextManager.getMember(namePath);
-                if(impactor) {
+                //lookup this object, along with the passthrough dependencies
+                let passThroughDependencies = [];
+                var impactor = contextManager.getMember(model,namePath,passThroughDependencies);
 
-                    //add as dependent (note this may not be a data object - check later!)
+                //add the impactor to the dependency map
+                if(impactor) {
+                    //add as dependent
                     var memberId = impactor.getId();
-                    if(!objectMap[memberId]) {
-                        dependencyList.push(impactor);
-                        objectMap[memberId] = true;
+                    if(dependsOnMap[memberId] != apogeeutil.NORMAL_DEPENDENCY) {
+                        dependsOnMap[memberId] = apogeeutil.NORMAL_DEPENDENCY;
                     }
                 }
+
+                //add the pass through members to the dependency map (give precedence to normal dependencies)
+                passThroughDependencies.forEach(passThroughMember => {
+                    var memberId = passThroughMember.getId();
+                    if(dependsOnMap[memberId] == undefined) {
+                        dependsOnMap[memberId] = apogeeutil.PASS_THROUGH_DEPENDENCY;
+                    }
+                });
             }
 		}
 	}
 	
-	return dependencyList;
+	return dependsOnMap;
+}
+
+/** This component encapsulates the member functionality for objects in the model.
+ * 
+ * This is a mixin and not a class. It is used for the prototype of the objects that inherit from it.
+ *  
+ * COMPONENT DEPENDENCIES:
+ * 
+ * FIELD NAMES (from update event):
+ * - data
+ * - name
+ * - parent
+ * 
+ * This class represents a member object. 
+ * The parent should be the parent member that holds this member or the object that holds
+ * the hierarchy (maybe the model). */
+class Member extends FieldObject {
+
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
+        super("member",instanceToCopy,keepUpdatedFixed);
+        
+        //==============
+        //Fields
+        //==============
+        //Initailize these if this is a new instance
+        if(!instanceToCopy) {
+            this.setField("name",name);
+            this.setField("parentId",parentId);
+            //"data"
+            //"pendingPromise"
+            //"state"
+        }
+    }
+
+    /** This property tells if this object is a member. */
+    get isMember() {
+        return true;
+    }
+
+    /** this method gets the name. */
+    getName() {
+        return this.getField("name");
+    }
+
+    /** This method returns the full name in dot notation for this object. */
+    getFullName(model) {
+        let name = this.getField("name");
+        let parentId = this.getField("parentId");
+        if(parentId) {
+            let parent = model.lookupMemberById(parentId);
+            if(parent) {
+                return parent.getChildFullName(model,name);
+            }
+        }
+        
+        //if we get here there is no parent
+        return name;
+    }
+
+    /** This returns true if the full name changes. */
+    isFullNameUpdated(model) {
+        if(this.areAnyFieldsUpdated(["name","parentId"])) {
+            return true;
+        }
+        else {
+            let parent = this.getParent(model);
+            if(parent) {
+                return parent.isFullNameUpdated(model); 
+            } 
+        }
+    }
+
+    getParentId() {
+        return this.getField("parentId");
+    }
+
+    /** This returns the parent for this member. */
+    getParent(model) {
+        let parentId = this.getField("parentId");
+        return model.lookupMemberById(parentId);
+    }
+
+    /** This returns the parent for this member. For the root folder
+     * this value is null. */
+    getParentMember(model) {
+        let parentId = this.getField("parentId");
+        if(parentId) {
+            let parent = model.lookupMemberById(parentId);
+            if((parent)&&(parent instanceof Member)) {
+                return parent;
+            }
+        }
+
+        //if we get here, there is no parent
+        return null;
+    }
+
+    //================================================
+    // Serialization Methods
+    //================================================
+
+    /** This method writes the child to a json. */
+    toJson(model) {
+        var json = {};
+        json.name = this.getField("name");
+        json.type = this.constructor.generator.type;
+        if(this.addToJson) {
+            this.addToJson(model,json);
+        }
+        
+        if(this.getUpdateData) {
+            var updateData = this.getUpdateData();
+            json.updateData = updateData;
+        }
+        return json;
+    }
+
+    ///** This method creates a member from a json. IT should be implemented as a static
+    // * function in extending objects. */ 
+    //fromJson(parent,json,childrenJsonOutputList) {
+    //}
+
+    //=======================================
+    // Data/State getting functions
+    //=======================================
+
+    /** This returns the state struct for the member. */
+    getState() {
+        let stateStruct = this.getField("state");
+        if(stateStruct) { 
+            return stateStruct.state;
+        }
+        else {
+            //If this happens, we will just make it state normal 
+            return apogeeutil.STATE_NORMAL;
+        }
+    }
+
+    /** this method gets the data map. */
+    getData() {
+        return this.getField("data");
+    }
+
+    /** This returns true if this member accepts setting the data. */
+    getSetDataOk() {
+        return this.constructor.generator.setDataOk;
+    }
+
+    /** This returns the pre calc error. */
+    getErrors() {
+        let stateStruct = this.getField("state");
+        let errorList;
+        if(stateStruct) {
+            //If this happens, we will just make it state normal
+            errorList = stateStruct.errorList;
+        }
+        if(!errorList) {
+            //just return an emptylist
+            errorList = [];
+        }
+        return errorList;
+    }
+
+    getErrorMsg() {
+        let stateStruct = this.getField("state");
+        let errorMsg;
+        if(stateStruct) {
+            //If this happens, we will just make it state normal
+            errorMsg = stateStruct.errorMsg;
+        }
+        if(!errorMsg) {
+            //just return an emptylist
+            errorMsg = UNKNOWN_ERROR_MSG_PREFIX + this.getName();
+        }
+        return errorMsg;
+    }
+
+    /** This returns true if the member is not up to date, typically
+     * do to waiting on an asynchronous operation. */
+    getPendingPromise() {
+        return this.getField("pendingPromise");
+    }
+
+    /** This returns true if the pending token matches. */
+    pendingPromiseMatches(promise) {
+        return (this.getPendingPromise() === promise);
+    }
+
+    //=======================================
+    // Update Data/State functions
+    //=======================================
+
+    /** This method clears the state field. */
+    clearState() {
+        this.clearField("state");
+    }
+
+    /** This method sets the data for this object. This is the object used by the 
+     * code which is identified by this name, for example the JSON object associated
+     * with a JSON table. Besides hold the data object, this updates the parent data map. */
+    setData(data) {
+        this.setField("data",data);
+        this._setState(apogeeutil.STATE_NORMAL,data);
+    }
+
+    /** This method adds an error for this member. It will be valid for the current round of calculation of
+     * this member. The error may be a javascript Error object of string (or any other object really). 
+     * The optional data value should typically be undefined unless there is a specifc data value that should be
+     * set with the error state. */
+    setError(error) {
+        this._setState(apogeeutil.STATE_ERROR,undefined,[error]);
+    }
+
+    /** This method sets the pre calc error for this dependent. 
+     * The optional data value should typically be undefined unless there is a specifc data value that should be
+     * set with the error state. */
+    setErrors(errorList) {
+        this._setState(apogeeutil.STATE_ERROR,undefined,errorList);
+    }
+
+    /** This sets the result pending flag. If there is a promise setting this member to pending, it should
+     * be passed as an arg. In this case the field will be updated only if the reolving promise matches this
+     * set promise. Otherwise it is assumed the promise had been superceded. In the case this member is pending
+     * because it depends on a remote pending member, then no promise should be passed in to this function. 
+     * The optional data value should typically be undefined unless there is a specifc data value that should be
+     * set with the pending state. */
+    setResultPending(promise) {
+        this._setState(apogeeutil.STATE_PENDING);
+        if(promise) {
+            this.setField("pendingPromise",promise);
+        }
+    }
+
+    /** This sets the result invalid flag. If the result is invalid, any
+     * table depending on this will also have an invalid value. 
+     * The optional data value should typically be undefined unless there is a specifc data value that should be
+     * set with the invalid state. */
+    setResultInvalid() {
+        this._setState(apogeeutil.STATE_INVALID);
+    }
+
+    /** This methos sets the data, where the data can be a generalized value
+     *  include data, apogeeutil.INVALID_VALUE, a Promis or an Error. Also, an explitict
+     * errorList can be passed in, includgin either Error or String objects. 
+     * This method does not however apply the asynchrnous data, it only flags the member as pending.
+     * the asynchronous data is set separately (also) using applyAsynchData, whcih requires access
+     * to the model object. */
+    applyData(data,errorList) {
+
+        //handle four types of data inputs
+        if((errorList)&&(errorList.length > 0)) {
+            this.setErrors(errorList);
+        }
+        else if(data instanceof Promise) {
+            //data is a promise - flag this a pending
+            this.setResultPending(data);
+        }
+        else if(data instanceof Error) {
+            //data is an error
+            this.setError(data);
+        }
+        else if(data === apogeeutil.INVALID_VALUE) {
+            //data is an invalid value
+            this.setResultInvalid();
+        }
+        else {
+            //normal data update (poosibly from an asynchronouse update)
+            this.setData(data);
+        }
+    }
+
+    /** This method implements setting asynchronous data on the member using a promise. */
+    applyAsynchData(model,promise) {
+
+        //kick off the asynch update
+        var asynchCallback = memberValue => {
+            //set the data for the table, along with triggering updates on dependent tables.
+            let actionData = {};
+            actionData.action = "updateData";
+            actionData.memberId = this.getId();
+            actionData.sourcePromise = promise;
+            actionData.data = memberValue;
+            model.doFutureAction(actionData);
+        };
+        var asynchErrorCallback = errorMsg => {
+            let actionData = {};
+            actionData.action = "updateData";
+            actionData.memberId = this.getId();
+            actionData.sourcePromise = promise;
+            actionData.data = new Error(errorMsg);
+            model.doFutureAction(actionData);
+        };
+
+        //call appropriate action when the promise completes
+        promise.then(asynchCallback).catch(asynchErrorCallback);
+    }
+
+    /** This method can be called to set data without setting the state. It is intended to be
+     * used by the folder to set the data value when an error, pending or invalid state is present. This
+     * data value is used for pass-through dependenceis. */
+    forceUpdateDataWithoutStateChange(data) {
+        this.setField("data",data);
+    }
+
+    //========================================
+    // Move Functions
+    //=========================================
+
+    /** This method should be used to rename and/or change 
+     * the parent of this member. */
+    move(newName,newParent) {
+        //update the name if needed
+        if(newName != this.getField("name")) {
+            this.setField("name",newName);
+        }
+        
+        //update the parent if needed
+        let currentParentId = this.getField("parentId");
+        if(currentParentId != newParent.getId()) {
+            this.setField("parentId",newParent.getId());
+        }
+    }
+
+    //========================================
+    // "Protected" Methods
+    //========================================
+
+    /** This method is called when the member is deleted. If necessary the implementation
+     * can extend this function, but it should call this base version of the function
+     * if it does.  
+     * @protected */
+    onDeleteMember(model) {
+    }
+
+    ///** This method is called when the model is closed and also when an object
+    // * is deleted. It should do any needed cleanup for the object.  
+    // * @protected */
+    //onClose();
+
+    //Implement this method if there is data to add to this member. Otherwise it may
+    //be omitted
+    ///** This method adds any additional data to the json saved for this member. 
+    // * @protected */
+    //addToJson(model,json) {
+    //}
+
+    //Implement this method if there is update data for this json. otherwise it may
+    //be omitted
+    ///** This gets an update structure to upsate a newly instantiated member
+    //* to match the current object. It may return "undefined" if there is no update
+    //* data needed. 
+    //* @protected */
+    //getUpdateData() {
+    //}
+
+    //----------------------------------
+    // State setting methods
+    //----------------------------------
+
+    /** This updates the state. For state NORMAL, the data should be set. 
+     * For any state other than NORMAL, the data will be set to INVALID, regardless of 
+     * what argument is given for data.
+     * For state ERROR, an error list should be set. */
+    _setState(state,data,errorList) {
+        let newStateStruct = {};
+        let oldStateStruct = this.getField("state");
+
+        //don't update state if it is the same value (unless it is error, then we will update it
+        //becuase I don't feel like comparing the error messages)
+        if((oldStateStruct)&&(oldStateStruct.state == state)&&(state != apogeeutil.STATE_ERROR)) {
+            return;
+        }
+
+        //do some safety checks on the error list
+        if(state == apogeeutil.STATE_ERROR) {
+            //make sure there is an error list
+            if(!errorList) errorList = [];
+
+            newStateStruct.state = apogeeutil.STATE_ERROR;
+            newStateStruct.errorList = errorList;
+            if(errorList.length > 0) {
+                newStateStruct.errorMsg = errorList.join("\n");
+            }
+            else {
+                newStateStruct.errorMsg = UNKNOWN_ERROR_MSG_PREFIX + this.getName();
+            }
+        }
+        else {
+            //here we ignore the error list if there was one (there shouldn't be)
+            newStateStruct.state = state;
+        }
+
+        
+
+        //set the data if we passed it in, regardless of state
+        this.setField("state",newStateStruct);
+        this.setField("data",data);
+        if(state == apogeeutil.STATE_NORMAL) {
+            if(data !== undefined) {
+                this.setField("data",data);
+            }
+            else {
+                this.clearField("data");
+            }
+        }
+        else { 
+            this.setField("data",apogeeutil.INVALID_VALUE);
+        }
+        
+        //clear the pending promise, if we are not in pending state
+        //note that the pending promise must be set elsewhere
+        if(state != apogeeutil.STATE_PENDING) {
+            if(this.getField("pendingPromise")) {
+                this.clearField("pendingPromise");
+            }
+        }
+    }
+
+
+}
+
+//add mixins to this class
+apogeeutil.mixin(Member,FieldObject);
+
+let UNKNOWN_ERROR_MSG_PREFIX = "Unknown error in member ";
+
+/** This mixin encapsulates an member whose value depends on on another
+ * member. The dependent allows for a recalculation based on an update of the 
+ * objects it depends on.
+ * 
+ * This is a mixin and not a class. It is used for the prototype of the objects that inherit from it.
+ * 
+ * COMPONENT DEPENDENCIES:
+ * 
+ */
+class DependentMember extends Member {
+
+    /** This initializes the component */
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed);
+
+        //==============
+        //Fields
+        //==============
+        //Initailize these if this is a new instance
+        if(!instanceToCopy) {
+            //this is the list of dependencies
+            this.setField("dependsOnMap",{});
+        }
+
+        //==============
+        //Working variables
+        //==============
+        this.calcPending = false;
+    }
+
+    /** This property tells if this object is a dependent.
+     * This property should not be implemented on non-dependents. */
+    get isDependent() {
+        return true;
+    }
+
+    /** This returns a list of the members that this member depends on. */
+    getDependsOn() {
+        return this.getField("dependsOnMap");
+    }
+
+    /** This returns the calc pending flag.  */
+    getCalcPending() {
+        return this.calcPending;
+    }
+
+    /** This sets the calc pending flag to false. It should be called when the 
+     * calcultion is no longer needed.  */
+    clearCalcPending() {
+        this.calcPending = false;
+    }
+
+    //Must be implemented in extending object
+    ///** This method udpates the dependencies if needed because
+    // *a variable was added or removed from the model. Any member that has its dependencies udpated
+    // * should be added to the additionalUpdatedObjects list. */
+    //updateDependeciesForModelChange(model,additionalUpdatedMembers);
+
+    ///** This is a check to see if the object should be checked for dependencies 
+    // * for recalculation. It is safe for this method to always return false and
+    // allow the calculation to happen. 
+    // * @private */
+    //memberUsesRecalculation();
+
+    /** This does any init needed for calculation.  */
+    prepareForCalculate() {
+        this.calcPending = true;
+        //clear any errors, and other state info
+        this.clearState();
+    }
+
+    ///** This updates the member based on a change in a dependency.  */
+    //calculate(model);
+
+    /** This method makes sure any impactors are set. It sets a dependency 
+     * error if one or more of the dependencies has a error. */
+    initializeImpactors(model) {
+        var errorDependencies = [];
+        var resultPending = false;
+        var resultInvalid = false;
+        
+        //make sure dependencies are up to date
+        let dependsOnMap = this.getField("dependsOnMap");
+        for(var idString in dependsOnMap) {
+            let dependsOnType = dependsOnMap[idString];
+            let impactor = model.lookupMemberById(idString);
+
+            if((impactor.isDependent)&&(impactor.getCalcPending())) {
+                impactor.calculate(model);
+            }
+
+            //inherit the the state of the impactor only if it is a normal dependency, as oppose to a pass through dependency
+            if(dependsOnType == apogeeutil.NORMAL_DEPENDENCY) {
+                let impactorState = impactor.getState();
+                if(impactorState == apogeeutil.STATE_ERROR) {
+                    errorDependencies.push(impactor);
+                } 
+                else if(impactorState == apogeeutil.STATE_PENDING) {
+                    resultPending = true;
+                }
+                else if(impactorState == apogeeutil.STATE_INVALID) {
+                    resultInvalid = true;
+                }
+            }
+        }
+
+        if(errorDependencies.length > 0) {
+            this.createDependencyError(model,errorDependencies);
+        }
+        else if(resultPending) {
+            this.setResultPending();
+        }
+        else if(resultInvalid) {
+            this.setResultInvalid();
+        }
+    }
+
+    /** This method removes this dependent from the model impacts map. */
+    onDeleteMember(model) {
+        super.onDeleteMember(model);
+
+        //remove this dependent from the impactor
+        let dependsOnMap = this.getField("dependsOnMap");
+        for(var remoteMemberIdString in dependsOnMap) {
+            //remove from imacts list
+            model.removeFromImpactsList(this.getId(),remoteMemberIdString);
+        }
+    }
+    //===================================
+    // Private Functions
+    //===================================
+
+    /** This sets the dependencies based on the code for the member. */
+    updateDependencies(model,newDependsOnMap) {
+        let dependenciesUpdated = false;
+
+        let oldDependsOnMap = this.getField("dependsOnMap");
+        for(var idString in newDependsOnMap) {
+            if(newDependsOnMap[idString] != oldDependsOnMap[idString]) {
+                dependenciesUpdated = true;
+                if(newDependsOnMap[idString] == apogeeutil.NORMAL_DEPENDENCY) model.addToImpactsList(this.getId(),idString);
+            }
+        }
+        for(var idString in oldDependsOnMap) {
+            if(newDependsOnMap[idString] != oldDependsOnMap[idString]) {
+                dependenciesUpdated = true;
+                if(!oldDependsOnMap[idString] == apogeeutil.NORMAL_DEPENDENCY) model.removeFromImpactsList(this.getId(),idString);
+            }
+        }
+
+        if(dependenciesUpdated) {
+            this.setField("dependsOnMap",newDependsOnMap);
+            this.calcPending = true;
+        }
+
+        return dependenciesUpdated;
+    }
+
+    /** This method creates an dependency error, given a list of impactors that have an error. 
+     * @private */
+    createDependencyError(model,errorDependencies) {
+            //dependency error found
+            var message = "Error in dependency: ";
+            for(var i = 0; i < errorDependencies.length; i++) {
+                if(i > 0) message += ", ";
+                message += errorDependencies[i].getFullName(model);
+            }
+            this.setError(message);   
+    }
 }
 
 /** This mixin encapsulates an object in that can be coded. It contains a function
@@ -8955,9 +8841,7 @@ function getDependencyInfo(varInfo,contextManager) {
  * 
  * This is a mixin and not a class. It is used in the prototype of the objects that inherit from it.
  * 
- * COMPONENT DEPENDENCIES:
- * - A Codeable must be a Member.
- * - A Codeable must be Dependent. 
+ * COMPONENT DEPENDENCIES: 
  * - A Codeable must be ContextHolder
  * 
  * FIELD NAMES (from update event):
@@ -8965,458 +8849,404 @@ function getDependencyInfo(varInfo,contextManager) {
  * - functionBody
  * - private
  */
-let Codeable = {};
+class CodeableMember extends DependentMember {
 
-/** This initializes the component. argList is the arguments for the object function. */
-Codeable.init = function(argList) {
-    
-    //arguments of the member function
-    if(argList) {
-        this.argList = argList;
-    }
-    else {
-        this.argList = [];
-    }
-    
-    //initialze the code as empty
-    this.codeSet = false;
-    this.functionBody = "";
-    this.supplementalCode = "";
-    this.varInfo = null;
-    this.dependencyInfo = null;
-    this.memberFunctionInitializer = null;
-    this.memberGenerator = null;
-    this.codeErrors = [];
-    
-    this.clearCalcPending();
-    this.setResultPending(false);
-    this.setResultInvalid(false);
-    
-    //set field updated in init
-    this.fieldUpdated("argList");
-    this.fieldUpdated("functionBody");
-    this.fieldUpdated("private");
-    
-    //fields used in calculation
-    this.dependencyInitInProgress = false;
-    this.functionInitialized = false;
-    this.initReturnValue = false;
-};
+    /** This initializes the component. argList is the arguments for the object function. */
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed);
 
-/** This property tells if this object is a codeable.
- * This property should not be implemented on non-codeables. */
-Codeable.isCodeable = true;
-
-Codeable.getSetCodeOk = function() {
-    return this.generator.setCodeOk;
-};
-
-/** This method returns the argument list.  */
-Codeable.getArgList = function() {
-    return this.argList;
-};
-
-/** This method returns the fucntion body for this member.  */
-Codeable.getFunctionBody = function() {
-    return this.functionBody;
-};
-
-/** This method returns the supplemental code for this member.  */
-Codeable.getSupplementalCode = function() {
-    return this.supplementalCode;
-};
-
-/** This method returns the formula for this member.  */
-Codeable.setCodeInfo = function(codeInfo,compiledInfo) {
-
-    //set the base data
-    if(this.argList.toString() != codeInfo.argList.toString()) {
-        this.fieldUpdated("argList");
-        this.argList = codeInfo.argList;
-    }
-    
-    if(this.functionBody != codeInfo.functionBody) {
-        this.fieldUpdated("functionBody");
-        this.functionBody = codeInfo.functionBody;
-    }
-    
-    if(this.supplementalCode != codeInfo.supplementalCode) {
-        this.fieldUpdated("private");
-        this.supplementalCode = codeInfo.supplementalCode;
-    }
-
-    //save the variables accessed
-    this.varInfo = compiledInfo.varInfo;
-
-    if((!compiledInfo.errors)||(compiledInfo.errors.length === 0)) {
-        //set the code  by exectuing generator
-        this.codeErrors = [];
+        //mixin init where needed. This is not a scoep root. Parent scope is inherited in this object
+        this.contextHolderMixinInit(false); 
         
-        try {
-            //get the inputs to the generator
-            var messenger = new Messenger(this);
-            
-            //get the generated fucntion
-            var generatedFunctions = compiledInfo.generatorFunction(messenger);
-            this.memberGenerator = generatedFunctions.memberGenerator;
-            this.memberFunctionInitializer = generatedFunctions.initializer;                       
+        //==============
+        //Fields
+        //==============
+        //Initailize these if this is a new instance
+        if(!instanceToCopy) {
+            //arguments of the member function
+            this.setField("argList",[]);
+            //"functionBody";
+            //"supplementalCode";
+            //"compiledInfo"
         }
-        catch(ex) {
-            this.codeErrors.push(ActionError.processException(ex,"Codeable - Set Code",false));
-        }
-    }
-    else {
-//doh - i am throwing away errors - handle this differently!
-        this.codeErrors = compiledInfo.errors;
-    }
-    
-    if(this.codeErrors.length > 0) {
-        //code not valid
-        this.memberGenerator = null;
-        this.memberFunctionInitializer = null;
-    }
-    this.codeSet = true;
-};
-
-/** This is a helper method that compiles the code as needed for setCodeInfo.*/
-Codeable.applyCode = function(argList,functionBody,supplementalCode) {
-    
-    var codeInfo ={};
-    codeInfo.argList = argList;
-    codeInfo.functionBody = functionBody;
-    codeInfo.supplementalCode = supplementalCode;
-    
-    //load some needed context variables
-    var codeLabel = this.getFullName();
-    
-    //process the code text into javascript code
-    var compiledInfo = processCode(codeInfo,
-        codeLabel);
-
-    //save the code
-    this.setCodeInfo(codeInfo,compiledInfo);
-};
-
-/** This method returns the formula for this member.  */
-Codeable.initializeDependencies = function() {
-    
-    if((this.hasCode())&&(this.varInfo)&&(this.codeErrors.length === 0)) {
-        try {
-            var newDependencyList = getDependencyInfo(this.varInfo,
-                   this.getContextManager());
-
-            //update dependencies
-            this.updateDependencies(newDependencyList);
-        }
-        catch(ex) {
-            this.codeErrors.push(ActionError.processException(ex,"Codeable - Set Dependencies",false));
-        }
-    }
-    else {
-        //will not be calculated - has no dependencies
-        this.updateDependencies([]);
-    }
-};
-
-/** This method udpates the dependencies if needed because
- *the passed variable was added.  */
-Codeable.updateDependeciesForModelChange = function(recalculateList) {
-    if((this.hasCode())&&(this.varInfo)) {
-                  
-        //calculate new dependencies
-        var newDependencyList = getDependencyInfo(this.varInfo,
-               this.getContextManager());
-          
-        //update the dependency list
-        var dependenciesChanged = this.updateDependencies(newDependencyList);
-        if(dependenciesChanged) {
-            //add to update list
-            addToRecalculateList(recalculateList,this);
-        }  
-    }
-};
-    
-/** This method returns the formula for this member.  */
-Codeable.clearCode = function() {
-    this.codeSet = false;
-    if(this.functionBody != "") {
-        this.fieldUpdated("functionBody");
-        this.functionBody = "";
-    }
-    if(this.supplementalCode != "") {
-        this.fieldUpdated("private");
-        this.supplementalCode = "";
-    }
-    this.varInfo = null;
-    this.dependencyInfo = null;
-    this.memberFunctionInitializer = null;
-    this.memberGenerator = null;
-    this.codeErrors = [];
-    
-    this.clearCalcPending();
-    this.setResultPending(false);
-    this.setResultInvalid(false);
-    
-    var newDependsOn = [];
-	this.updateDependencies(newDependsOn);
-};
-
-/** This method returns the formula for this member.  */
-Codeable.hasCode = function() {
-    return this.codeSet;
-};
-
-/** If this is true the member is ready to be executed. 
- * @private */
-Codeable.needsCalculating = function() {
-	return this.codeSet;
-};
-
-/** This does any init needed for calculation.  */
-Codeable.prepareForCalculate = function() {
-    //call the base function
-    Dependent$1.prepareForCalculate.call(this);
-    
-    this.functionInitialized = false;
-    this.initReturnValue = false;
-};
-
-/** This method sets the data object for the member.  */
-Codeable.calculate = function() {
-    if(this.codeErrors.length > 0) {
-        this.addErrors(this.codeErrors);
-        this.clearCalcPending();
-        return;
-    }
-    
-    if((!this.memberGenerator)||(!this.memberFunctionInitializer)) {
-        var msg = "Function not found for member: " + this.getName();
-        var actionError = new ActionError(msg,"Codeable - Calculate",this);
-        this.addError(actionError);
-        this.clearCalcPending();
-        return;
-    } 
-    
-    try {
-        this.processMemberFunction(this.memberGenerator);
-    }
-    catch(error) {
-        if(error == base.MEMBER_FUNCTION_INVALID_THROWABLE) {
-            //This is not an error. I don't like to throw an error
-            //for an expected condition, but I didn't know how else
-            //to do this. See notes where this is thrown.
-            this.setResultInvalid(true);
-        }
-        else if(error == base.MEMBER_FUNCTION_PENDING_THROWABLE) {
-            //This is not an error. I don't like to throw an error
-            //for an expected condition, but I didn't know how else
-            //to do this. See notes where this is thrown.
-            this.setResultPending(true);
-        }
-        //--------------------------------------
-        else {
-            //normal error in member function execution
         
-            //this is an error in the code
-            if(error.stack) {
-                console.error(error.stack);
-            }
-
-            var errorMsg = (error.message) ? error.message : "Unknown error";
-            var actionError = new ActionError(errorMsg,"Codeable - Calculate",this);
-            actionError.setParentException(error);
-            this.addError(actionError);
-        }
-    }
-    
-    this.clearCalcPending();
-};
-
-/** This makes sure user code of object function is ready to execute.  */
-Codeable.memberFunctionInitialize = function() {
-    
-    if(this.functionInitialized) return this.initReturnValue;
-    
-    //make sure this in only called once
-    if(this.dependencyInitInProgress) {
-        var errorMsg = "Circular reference error";
-        var actionError = new ActionError(errorMsg,"Codeable - Calculate",this);
-        this.addError(actionError);
-        //clear calc in progress flag
+        //==============
+        //Working variables
+        //==============
         this.dependencyInitInProgress = false;
-        this.functionInitialized = true;
-        this.initReturnValue = false;
-        return this.initReturnValue;
     }
-    this.dependencyInitInProgress = true;
-    
-    try {
+
+    /** This property tells if this object is a codeable.
+     * This property should not be implemented on non-codeables. */
+    get isCodeable() {
+        return true;
+    } 
+
+    getSetCodeOk() {
+        return this.constructor.generator.setCodeOk;
+    }
+
+    /** This method returns the argument list.  */
+    getArgList() {
+        return this.getField("argList");
+    }
+
+    /** This method returns the fucntion body for this member.  */
+    getFunctionBody() {
+        return this.getField("functionBody");
+    }
+
+    /** This method returns the supplemental code for this member.  */
+    getSupplementalCode() {
+        return this.getField("supplementalCode");
+    }
+
+    /** This is a helper method that compiles the code as needed for setCodeInfo.*/
+    applyCode(argList,functionBody,supplementalCode) {
+
+        //save the code
+        if(this.getField("argList").toString() != argList.toString()) {
+            this.setField("argList",argList);
+        }
         
-        //make sure the data is set in each impactor
-        this.initializeImpactors();
-        if((this.hasError())||(this.getResultPending())||(this.getResultInvalid())) {
+        if(this.getField("functionBody") != functionBody) {
+            this.setField("functionBody",functionBody);
+        }
+        
+        if(this.getField("supplementalCode") != supplementalCode) {
+            this.setField("supplementalCode",supplementalCode);
+        }
+        
+        //process the code text into javascript code
+        var codeLabel = this.getName();
+        var compiledInfo = processCode(argList,functionBody,supplementalCode,codeLabel);
+        this.setField("compiledInfo",compiledInfo);
+    }
+
+    /** This method clears the function body and supplemental code, and
+     * updates any associated variables, including the dependencies.  */
+    clearCode(model) {
+        if(this.getField("functionBody") != "") {
+            this.setField("functionBody","");
+        }
+        if(this.getField("supplementalCode") != "") {
+            this.setField("supplementalCode","");
+        }
+        this.clearField("compiledInfo");
+        
+        this.clearCalcPending();
+
+        this.updateDependencies(model,[]);
+    }
+
+    /** This method returns the formula for this member.  */
+    initializeDependencies(model) {
+
+        let compiledInfo = this.getField("compiledInfo");
+        
+        if((this.hasCode())&&(compiledInfo.valid)) {
+            //set the dependencies
+            var dependsOnMap = getDependencyInfo(compiledInfo.varInfo,model,this.getContextManager());
+            this.updateDependencies(model,dependsOnMap);
+            
+        }
+        else {
+            //will not be calculated - has no dependencies
+            this.updateDependencies(model,{});
+        }
+    }
+
+    /** This method udpates the dependencies if needed because
+     *the passed variable was added.  */
+    updateDependeciesForModelChange(model,additionalUpdatedMembers) {
+        let compiledInfo = this.getField("compiledInfo");
+        if((compiledInfo)&&(compiledInfo.valid)) {
+                    
+            //calculate new dependencies
+            let oldDependsOnMap = this.getDependsOn();
+            let newDependsOnMap = getDependencyInfo(compiledInfo.varInfo,model,this.getContextManager());
+
+            if(!apogeeutil.jsonEquals(oldDependsOnMap,newDependsOnMap)) {
+                //if dependencies changes, make a new mutable copy and add this to 
+                //the updated values list
+                let mutableMemberCopy = model.getMutableMember(this.getId());
+                mutableMemberCopy.updateDependencies(model,newDependsOnMap);
+                additionalUpdatedMembers.push(mutableMemberCopy);
+            }
+        }
+    }
+
+    /** This method returns the formula for this member.  */
+    hasCode() {
+        return this.getField("compiledInfo") ? true : false;
+    }
+
+    /** If this is true the member is ready to be executed. */
+    memberUsesRecalculation() {
+        return this.hasCode();
+    }
+
+    /** This method sets the data object for the member.  */
+    calculate(model) {
+        let compiledInfo = this.getField("compiledInfo");
+        if(!compiledInfo) {
+            this.setError("Code not found for member: " + this.getName());
+            this.clearCalcPending();
+            return;
+        }
+        else if(!compiledInfo.valid) {
+            this.setErrors(compiledInfo.errors);
+            this.clearCalcPending();
+            return;
+        }
+
+//temporary - re create the initializer
+let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
+      
+        try {
+            this.processMemberFunction(model,memberFunctionInitializer,compiledInfo.memberFunctionGenerator);
+        }
+        catch(error) {
+            
+            if(error == apogeeutil.MEMBER_FUNCTION_INVALID_THROWABLE) {
+                //This is not an error. I don't like to throw an error
+                //for an expected condition, but I didn't know how else
+                //to do this. See notes where this is thrown.
+                this.setResultInvalid();
+            }
+            else if(error == apogeeutil.MEMBER_FUNCTION_PENDING_THROWABLE) {
+                //This is not an error. I don't like to throw an error
+                //for an expected condition, but I didn't know how else
+                //to do this. See notes where this is thrown.
+                this.setResultPending();
+            }
+            //--------------------------------------
+            else {
+                //normal error in member function execution
+            
+                //this is an error in the code
+                if(error.stack) {
+                    console.error(error.stack);
+                }
+
+                this.setError(error);
+            }
+        }
+        
+        this.clearCalcPending();
+    }
+
+    //------------------------------
+    // Member Methods
+    //------------------------------
+
+    /** This gets an update structure to upsate a newly instantiated member
+    /* to match the current object. */
+    getUpdateData() {
+        var updateData = {};
+        if(this.hasCode()) {
+            updateData.argList = this.getArgList();
+            updateData.functionBody = this.getFunctionBody();
+            updateData.supplementalCode = this.getSupplementalCode();
+        }
+        else {
+            let state = this.getState();
+
+            //handle the possible data value cases
+            if(state == apogeeutil.STATE_INVALID) {
+                //invalid valude
+                updateData.invalidValue = true;
+            }
+            else if(state == apogeeutil.STATE_PENDING) {
+                //pending value - we can't do anything with this
+                alert("There is a pending result in a field being saved. This may not be saved properly.");
+                updateData.data = "<unknown pending value>";
+            }
+            else if(state == apogeeutil.STATE_ERROR) {
+                //save the errors as strings only
+                updateData.errorList = this.getErrors().map(error => error.toString());
+            }
+            else {
+                //save the data value
+                updateData.data = this.getData();
+            }
+        }
+        return updateData;
+    }
+
+    //------------------------------
+    //ContextHolder methods
+    //------------------------------
+
+    /** This method retrieve creates the loaded context manager. */
+    createContextManager() {
+        return new ContextManager(this);
+    }
+
+    //===================================
+    // Private Functions
+    //===================================
+
+    //implementations must implement this function
+    //This method takes the object function generated from code and processes it
+    //to set the data for the object. (protected)
+    //processMemberFunction 
+    
+    /** This makes sure user code of object function is ready to execute.  */
+    createMemberFunctionInitializer(model) {
+        //we want to hold these as closure variables
+        let functionInitialized = false;
+        let functionInitializedSuccess = false;
+
+        let memberFunctionInitializer = () => {
+            
+            if(functionInitialized) return functionInitializedSuccess;
+            
+            //make sure this in only called once
+            if(this.dependencyInitInProgress) {
+                this.setError("Circular reference error");
+                //clear calc in progress flag
+                this.dependencyInitInProgress = false;
+                functionInitialized = true;
+                functionInitializedSuccess = false;
+                return functionInitializedSuccess;
+            }
+            this.dependencyInitInProgress = true;
+            
+            try {
+                //make sure the data is set in each impactor
+                this.initializeImpactors(model);
+                let state = this.getState();
+                if((state == apogeeutil.STATE_ERROR)||(state == apogeeutil.STATE_PENDING)||(state == apogeeutil.STATE_INVALID)) {
+                    this.dependencyInitInProgress = false;
+                    functionInitialized = true;
+                    functionInitializedSuccess = false;
+                    return functionInitializedSuccess;
+                }
+                
+                //set the context
+                let compiledInfo = this.getField("compiledInfo");
+                let messenger = new Messenger(model,this);
+                compiledInfo.memberFunctionContextInitializer(model,this.getContextManager(),messenger);
+                
+                functionInitializedSuccess = true;
+            }
+            catch(error) {
+                //this is an error in the code
+                if(error.stack) {
+                    console.error(error.stack);
+                }
+
+                this.setError(error);
+                functionInitializedSuccess = false;
+            }
+            
             this.dependencyInitInProgress = false;
-            this.functionInitialized = true;
-            this.initReturnValue = false;
-            return this.initReturnValue;
-        }
-        
-        //set the context
-        this.memberFunctionInitializer(this.getContextManager());
-        
-        this.initReturnValue = true;
+            functionInitialized = true;
+            return functionInitializedSuccess;
+        };
+
+        return memberFunctionInitializer;
+
     }
-    catch(error) {
-        //this is an error in the code
-        if(error.stack) {
-            console.error(error.stack);
-        }
-        var errorMsg = (error.message) ? error.message : "Unknown error";
-        var actionError = new ActionError(errorMsg,"Codeable - Calculate",this);
-        actionError.setParentException(error);
-        this.addError(actionError);
-        this.initReturnValue = false;
-    }
-    
-    this.dependencyInitInProgress = false;
-    this.functionInitialized = true;
-    return this.initReturnValue;
-};
 
-//------------------------------
-// Member Methods
-//------------------------------
 
-/** This gets an update structure to upsate a newly instantiated member
-/* to match the current object. */
-Codeable.getUpdateData = function() {
-    var updateData = {};
-    if(this.hasCode()) {
-        updateData.argList = this.getArgList();
-        updateData.functionBody = this.getFunctionBody();
-        updateData.supplementalCode = this.getSupplementalCode();
-    }
-    else {
-        updateData.data = this.getData();
-    }
-    return updateData;
-};
-
-//------------------------------
-//ContextHolder methods
-//------------------------------
-
-/** This method retrieve creates the loaded context manager. */
-Codeable.createContextManager = function() {
-    return new ContextManager(this);
-};
-
-//===================================
-// Private Functions
-//===================================
-
-//implementations must implement this function
-//This method takes the object function generated from code and processes it
-//to set the data for the object. (protected)
-//Codeable.processMemberFunction
-
-/** This class encapsulatees a data table for a JSON object */
-function JsonTable(name,owner,initialData) {
-    //base init
-    Member.init.call(this,name,JsonTable.generator);
-    Dependent$1.init.call(this);
-    ContextHolder.init.call(this);
-	Codeable.init.call(this,[],true);
-    
-    this.initOwner(owner);
-    
-    //set initial data
-    if(!initialData) {
-        //default initail value
-        initialData = {};
-        initialData.data = "";
-    }  
-
-    if(initialData.functionBody !== undefined) {
-        this.applyCode(initialData.argList,
-            initialData.functionBody,
-            initialData.supplementalCode);
-    }
-    else {
-        if(initialData.data === undefined) initialData.data = "";
-        
-        this.setData(initialData.data);
-    }
 }
 
 //add components to this class
-base.mixin(JsonTable,Member);
-base.mixin(JsonTable,Dependent$1);
-base.mixin(JsonTable,ContextHolder);
-base.mixin(JsonTable,Codeable);
+apogeeutil.mixin(CodeableMember,ContextHolder);
 
-//------------------------------
-// Codeable Methods
-//------------------------------
+/** This class encapsulatees a data table for a JSON object */
+class JsonTable extends CodeableMember {
 
-/** This method returns the argument list. We override it because
- * for JsonTable it gets cleared when data is set. However, whenever code
- * is used we want the argument list to be this value. */
-JsonTable.prototype.getArgList = function() {
-    return [];
-};
-	
-JsonTable.prototype.processMemberFunction = function(memberGenerator) {
-    
-    //first initialize
-    var initialized = this.memberFunctionInitialize();
-    
-    var data;
-    if(initialized) {
-        //the data is the output of the function
-        var memberFunction = memberGenerator();
-        data = memberFunction();
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed);
     }
-    else {
-        //initialization issue = error or pending dependancy
-        data = undefined;
-    }
-    
-    if(data === apogeeutil.INVALID_VALUE) {
-        //value is invalid if return is this predefined value
-        this.setResultInvalid(true);
-    }
-    else if(data instanceof Promise) {
-        //if the return value is a Promise, the data is asynch asynchronous!
-        this.applyPromiseData(data);
-    }
-    else {
-        //result is normal synchronous data
-        this.setData(data); 
-    }
-};
 
-//------------------------------
-// Member Methods
-//------------------------------
+    //------------------------------
+    // Codeable Methods
+    //------------------------------
 
-/** This method extends set data from member. It also
- * freezes the object so it is immutable. (in the future we may
- * consider copying instead, or allowing a choice)*/
-JsonTable.prototype.setData = function(data) {
-    
-	//make this object immutable
-	base.deepFreeze(data);
+    /** This method returns the argument list. We override it because
+     * for JsonTable it gets cleared when data is set. However, whenever code
+     * is used we want the argument list to be this value. */
+    getArgList() {
+        return [];
+    }
+        
+    processMemberFunction(model,memberFunctionInitializer,memberGenerator) {
+        let initialized = memberFunctionInitializer();
+        if(initialized) {
+            //the data is the output of the function
+            let memberFunction = memberGenerator();
+            let data = memberFunction();
+            this.applyData(data);
 
-	//store the new object
-    return Member.setData.call(this,data);
-};
+            //we must separately apply the asynch data set promise if there is one
+            if((data)&&(data instanceof Promise)) {
+                this.applyAsynchData(model,data);
+            }
+        } 
+    }
 
-/** This method creates a member from a json. It should be implemented as a static
- * method in a non-abstract class. */ 
-JsonTable.fromJson = function(owner,json) {
-    return new JsonTable(json.name,owner,json.updateData);
-};
+    //------------------------------
+    // Member Methods
+    //------------------------------
+
+    /** This method extends set data from member. It also
+     * freezes the object so it is immutable. (in the future we may
+     * consider copying instead, or allowing a choice)*/
+    setData(data) {
+        
+        //make this object immutable
+        apogeeutil.deepFreeze(data);
+
+        //store the new object
+        return super.setData(data);
+    }
+
+    /** This method creates a member from a json. It should be implemented as a static
+     * method in a non-abstract class. */ 
+    static fromJson(parentId,json) {
+        let member = new JsonTable(json.name,parentId);
+
+        //set initial data
+        let initialData = json.updateData;
+        if(!initialData) {
+            //default initail value
+            initialData = {};
+            initialData.data = "";
+        }  
+
+        //apply the initial data
+        if(initialData.functionBody !== undefined) {
+            //apply initial code
+            member.applyCode(initialData.argList,
+                initialData.functionBody,
+                initialData.supplementalCode);
+        }
+        else {
+            //apply initial data
+            let data;
+            let errorList;
+
+            if(initialData.errorList) errorList = initialData.errorList;
+            else if(initialData.invalidError) data = apogeeutil.INVALID_VALUE;
+            else if(initialData.data !== undefined) data = initialData.data;
+            else data = "";
+
+            //apply the initial data
+            //note for now this can not be a promise, so we do not need to also call applyAsynchData.
+            member.applyData(data,errorList);
+
+            //set the code fields to empty strings
+            member.setField("functionBody","");
+            member.setField("supplementalCode","");
+        }
+
+        return member;
+    }
+}
 
 //============================
 // Static methods
@@ -9430,114 +9260,154 @@ JsonTable.generator.setDataOk = true;
 JsonTable.generator.setCodeOk = true;
 
 //register this member
-Workspace.addMemberGenerator(JsonTable.generator);
+Model.addMemberGenerator(JsonTable.generator);
 
 /** This is a function. */
-function FunctionTable(name,owner,initialData) {
-    //base init
-    Member.init.call(this,name,FunctionTable.generator);
-    Dependent$1.init.call(this);
-    ContextHolder.init.call(this);
-	Codeable.init.call(this,argList,false);
-    
-    this.initOwner(owner);
-    
-    //set initial data
-    var argList = initialData.argList ? initialData.argList : [];
-    var functionBody = initialData.functionBody ? initialData.functionBody : "";
-    var supplementalCode = initialData.supplementalCode ? initialData.supplementalCode : "";
-    this.applyCode(argList,functionBody,supplementalCode);
-}
+class FunctionTable extends CodeableMember {
 
-//add components to this class
-base.mixin(FunctionTable,Member);
-base.mixin(FunctionTable,Dependent$1);
-base.mixin(FunctionTable,ContextHolder);
-base.mixin(FunctionTable,Codeable);
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed);   
+    }
 
-//------------------------------
-// Codeable Methods
-//------------------------------
+    //------------------------------
+    // Codeable Methods
+    //------------------------------
 
-FunctionTable.prototype.processMemberFunction = function(memberGenerator) {
-    var memberFunction = this.getLazyInitializedMemberFunction(memberGenerator);
-	this.setData(memberFunction);
-};
+    processMemberFunction(model,memberFunctionInitializer,memberGenerator) {
+        var memberFunction = this.getLazyInitializedMemberFunction(memberFunctionInitializer,memberGenerator);
+        this.setData(memberFunction);
+    }
 
-FunctionTable.prototype.getLazyInitializedMemberFunction = function(memberGenerator) {
-    var instance = this;
+    getLazyInitializedMemberFunction(memberFunctionInitializer,memberGenerator) {
 
-    //create init member function for lazy initialization
-    //we need to do this for recursive functions, or else we will get a circular reference
-    var initMember = function() {
-        var impactorSuccess = instance.memberFunctionInitialize();
-        if(impactorSuccess) {
-            return memberGenerator();
-        }
-        else {
-            //error handling
-            var issue;
-            
-            //in the case of "result invalid" or "result pending" this is 
-            //NOT an error. But I don't know
-            //how else to stop the calculation other than throwing an error, so 
-            //we do that here. It should be handled by anyone calling a function.
-            if(instance.hasError()) {
-                issue = new Error("Error in dependency: " + instance.getFullName());
-
-            }
-            else if(instance.getResultPending()) {
-                issue = base.MEMBER_FUNCTION_PENDING_THROWABLE;
-            }
-            else if(instance.getResultInvalid()) {
-                issue = base.MEMBER_FUNCTION_INVALID_THROWABLE;
+        //create init member function for lazy initialization
+        //we need to do this for recursive functions, or else we will get a circular reference
+        var initMember = () => {
+            var impactorSuccess = memberFunctionInitializer();
+            if(impactorSuccess) {
+                return memberGenerator();
             }
             else {
-                issue = new Error("Unknown problem in initializing: " + instance.getFullName());
+                //error handling
+                let issue;
+                let state = this.getState();
+
+                //in the case of "result invalid" or "result pending" this is 
+                //NOT an error. But I don't know
+                //how else to stop the calculation other than throwing an error, so 
+                //we do that here. It should be handled by anyone calling a function.
+                if(state == apogeeutil.STATE_ERROR) {
+                    issue = new Error("Error in dependency: " + this.getName());
+                }
+                else if(state == apogeeutil.STATE_PENDING) {
+                    issue = apogeeutil.MEMBER_FUNCTION_PENDING_THROWABLE;
+                }
+                else if(state == apogeeutil.STATE_INVALID) {
+                    issue = apogeeutil.MEMBER_FUNCTION_INVALID_THROWABLE;
+                }
+                else {
+                    issue = new Error("Unknown problem in initializing: " + this.getName());
+                }
+                
+                throw issue;
+            } 
+        };
+
+        //this is called from separate code to make debugging more readable
+        return __functionTableWrapper(initMember);
+    }
+
+    /** Add to the base lock function - The function is lazy initialized so it can call itself without a 
+     * ciruclar reference. The initialization happens on the first actual call. This is OK if we are doing the
+     * model calculation. but if it is first called _AFTER_ the model has completed being calculated, such as
+     * externally, then we will get a locked error when the lazy initialization happens. Instead, we will
+     * complete the lazy initialization before the lock is done. At this point we don't need to worry about
+     * circular refernce anyway, since the model has already completed its calculation. */
+    lock() {
+        //check if the function is initialized
+        let memberFunction = this.getData();
+        if((memberFunction)&&(memberFunction.initializeIfNeeded)) {
+            try {
+                memberFunction.initializeIfNeeded();
             }
-            
-            throw issue;
-        } 
-    };
+            catch(error) {
+                //handle potential error cases!!!:
+                
+                if(error == apogeeutil.MEMBER_FUNCTION_INVALID_THROWABLE) {
+                    //This is not an error. I don't like to throw an error
+                    //for an expected condition, but I didn't know how else
+                    //to do this. See notes where this is thrown.
+                    this.setResultInvalid();
+                }
+                else if(error == apogeeutil.MEMBER_FUNCTION_PENDING_THROWABLE) {
+                    //This is not an error. I don't like to throw an error
+                    //for an expected condition, but I didn't know how else
+                    //to do this. See notes where this is thrown.
+                    this.setResultPending();
+                }
+                //--------------------------------------
+                else {
+                    //normal error in member function execution
+                
+                    //this is an error in the code
+                    if(error.stack) {
+                        console.error(error.stack);
+                    }
+    
+                    this.setError(error);
+                }
+            }
 
-    //this is called from separate code to make debugging more readable
-    return __functionTableWrapper(initMember);
-};
-
-//------------------------------
-// Member Methods
-//------------------------------
-
-/** This method creates a member from a json. It should be implemented as a static
- * method in a non-abstract class. */ 
-FunctionTable.fromJson = function(owner,json) {
-    return new FunctionTable(json.name,owner,json.updateData);
-};
-
-/** This method extends the base method to get the property values
- * for the property editting. */
-FunctionTable.readProperties = function(member,values) {
-    var argList = member.getArgList();
-    var argListString = argList.toString();
-    values.argListString = argListString;
-    return values;
-};
-
-/** This method executes a property update. */
-FunctionTable.getPropertyUpdateAction = function(member,newValues) {
-    if((newValues.updateData)&&(newValues.updateData.argList !== undefined)) {
-        var actionData = {};
-        actionData.action = "updateCode";
-        actionData.memberName = member.getFullName();
-        actionData.argList = newValues.updateData.argList;
-        actionData.functionBody = member.getFunctionBody();
-        actionData.supplementalCode = member.getSupplementalCode();
-        return actionData;
+        }
+        super.lock();
     }
-    else {
-        return null;
+
+    //------------------------------
+    // Member Methods
+    //------------------------------
+
+    /** This method creates a member from a json. It should be implemented as a static
+     * method in a non-abstract class. */ 
+    static fromJson(parentId,json) {
+        let member = new FunctionTable(json.name,parentId);
+
+        //set initial data
+        let initialData = json.updateData;
+
+        var argList = initialData.argList ? initialData.argList : [];
+        var functionBody = initialData.functionBody ? initialData.functionBody : "";
+        var supplementalCode = initialData.supplementalCode ? initialData.supplementalCode : "";
+        member.applyCode(argList,functionBody,supplementalCode);
+
+        return member;
     }
-};
+
+    /** This method extends the base method to get the property values
+     * for the property editting. */
+    static readProperties(member,values) {
+        var argList = member.getArgList();
+        var argListString = argList.toString();
+        values.argListString = argListString;
+        return values;
+    }
+
+    /** This method executes a property update. */
+    static getPropertyUpdateAction(member,newValues) {
+        if((newValues.updateData)&&(newValues.updateData.argList !== undefined)) {
+            var actionData = {};
+            actionData.action = "updateCode";
+            actionData.memberId = member.getId();
+            actionData.argList = newValues.updateData.argList;
+            actionData.functionBody = member.getFunctionBody();
+            actionData.supplementalCode = member.getSupplementalCode();
+            return actionData;
+        }
+        else {
+            return null;
+        }
+    }
+
+}
 
 //============================
 // Static methods
@@ -9553,330 +9423,193 @@ FunctionTable.generator.setDataOk = false;
 FunctionTable.generator.setCodeOk = true;
 
 //register this member
-Workspace.addMemberGenerator(FunctionTable.generator);
-
-/** This component encapsulates an owner object that is a member and contains children members, creating  a 
- * hierarchical structure in the workspace. Each child has a name and this name
- * forms the index of the child into its parent. (I guess that means it doesn't
- * have to be a string, in the case we made an ArrayFolder, which would index the
- * children by integer.)
- * 
- * This is a mixin and not a class. It is used for the prototype of the objects that inherit from it.
- * 
- * COMPONENT DEPENDENCIES:
- * - A Parent must be a Member.
- * - A Parent must be an Owner.
- */
-let Parent = {};
-
-/** This is the name for the root. */
-Parent.ROOT_NAME = "root";
-
-/** This initializes the component */
-Parent.init = function() {
-    this.childrenWriteable = true;
-};
-
-Parent.isParent = true;
-
-
-/** this is used to identify if this is the root folder. */
-Parent.isRoot = function() {
-    //undefined may be OK too. If there is populated object this is not root.
-    return (this.getParent() == null); 
-};
-
-///** this method gets a map of child names to children. This may not be the structure
-// * of the data in the parent, but it is the prefered common representation. */
-//Parent.getChildMap = function();
-
-// Must be implemented in extending object
-///** This method looks up a child from this folder.  */
-//Parent.lookupChild = function(name);
-
-/** This method looks up a child using an arry of names corresponding to the
- * path from this folder to the object.  The argument startElement is an optional
- * index into the path array for fodler below the root folder. */
-Parent.lookupChildFromPathArray = function(path,startElement) {
-    if(startElement === undefined) startElement = 0;
-    
-    var member = this.lookupChild(path[startElement]);
-    if(!member) return undefined;
-    
-    if(startElement < path.length-1) {
-        if(member.isParent) {
-            return member.lookupChildFromPathArray(path,startElement+1);
-        }
-        else if(member.isOwner) {
-            return member.getMemberByPathArray(path,startElement+1);
-        }
-        else {
-            return member;
-        }
-    }
-    else {
-        return member;
-    }
-};
-
-/** This method allows the UI to decide if the user can add children to it. This
- * value defaults to true. */
-Parent.getChildrenWriteable = function() {
-    return this.childrenWriteable;
-};
-
-/** This method sets the writeable property for adding child members. This value of
- * the method is not enforced (since children must be added one way or another). */
-Parent.setChildrenWriteable = function(writeable) {
-    this.childrenWriteable = writeable; 
-};
-
-// Must be implemented in extending object
-///** This method adds the child to this parent. 
-// * It will fail if the name already exists.  */
-//Parent.addChild = function(child);
-
-// Must be implemented in extending object
-///** This method removes this child from this parent.  */
-//Parent.removeChild = function(child);
-
-// Must be implemented in extending object
-///** This method updates the data object for this child. */
-//Parent.updateData = function(child);
-
-///** This method is called when the workspace is closed. 
-//* It should do any needed cleanup for the object. */
-//Parent.onClose = function();
-
-//------------------------------
-//ContextHolder methods
-//------------------------------
-
-/** This method retrieve creates the loaded context manager. */
-Parent.createContextManager = function() {
-    //set the context manager
-    var contextManager = new ContextManager(this);
-    //add an entry for this folder. Make it local unless this si a root folder
-    var myEntry = {};
-    myEntry.parent = this;
-    contextManager.addToContextList(myEntry);
-    
-    return contextManager;
-};
-
-//------------------------------
-//Owner methods
-//------------------------------
-
-/** This method returns the full name in dot notation for this object. */
-//Parent.getFullName = function() {
-//    return Member.getFullName.call(this);
-//}
-
-/** this method gets the hame the children inherit for the full name. */
-Parent.getPossesionNameBase = function() {
-    return this.getFullName() + ".";
-};
+Model.addMemberGenerator(FunctionTable.generator);
 
 /** This is a folder. */
-function Folder(name,owner) {
-    //base init
-    Member.init.call(this,name,Folder.generator);
-    Dependent$1.init.call(this);
-    ContextHolder.init.call(this);
-    Owner.init.call(this);
-    Parent.init.call(this);
-    
-    this.initOwner(owner);
+class Folder extends DependentMember {
 
-    //this holds the base objects, mapped by name
-    this.childMap = {};
-    this.dataMap = {};
-	
-	//make sure the data map is frozen
-	Object.freeze(this.dataMap);
-    this.setData(this.dataMap);
-}
+    constructor(name,parent,instanceToCopy,keepUpdatedFixed) {
+        super(name,parent,instanceToCopy,keepUpdatedFixed);
 
-//add components to this class
-base.mixin(Folder,Member);
-base.mixin(Folder,Dependent$1);                      
-base.mixin(Folder,ContextHolder);
-base.mixin(Folder,Owner);
-base.mixin(Folder,Parent);
+        //mixin init where needed
+        //This is not a root. Scope is inherited from the parent.
+        this.contextHolderMixinInit(false);
+        this.parentMixinInit(instanceToCopy);
 
-//------------------------------
-// Parent Methods
-//------------------------------
-
-/** this method gets the table map. */
-Folder.prototype.getChildMap = function() {
-    return this.childMap;
-};
-
-/** This method looks up a child from this folder.  */
-Folder.prototype.lookupChild = function(name) {
-    //check look for object in this folder
-    return this.childMap[name];
-};
-
-/** This method adds a table to the folder. It also sets the folder for the
- *table object to this folder. It will fail if the name already exists.  */
-Folder.prototype.addChild = function(child) {
-	
-    //check if it exists first
-    var name = child.getName();
-    if(this.childMap[name]) {
-        //already exists! not fatal since it is not added to the model yet,
-        throw base.createError("There is already an object with the given name.",false);
-    }
-    //add object
-    this.childMap[name] = child;
-    
-    var data = child.getData();
-    //object may first appear with no data
-    if(data !== undefined) {
-        this.spliceDataMap(name,data);
-    }
-    
-    //set all children as dependents
-    this.calculateDependents();
-};
-
-/** This method removes a table from the folder. */
-Folder.prototype.removeChild = function(child) {
-    //make sure this is a child of this object
-	var parent = child.getParent();
-    if((!parent)||(parent !== this)) return;
-	
-    //remove from folder
-    var name = child.getName();
-    delete(this.childMap[name]);
-    this.spliceDataMap(name);
-    
-    //set all children as dependents
-    this.calculateDependents();
-};
-
-/** This method updates the table data object in the folder data map. */
-Folder.prototype.updateData = function(child) {
-	
-    var name = child.getName();
-    var data = child.getData();
-    if(this.childMap[name] === undefined) {
-        alert("Error - this table " + name + " has not yet been added to the folder.");
-        return;
-    }
-	this.spliceDataMap(name,data);
-};
-
-/** There is no calculation for the folder base on dependents. 
- * @private */
-Folder.prototype.needsCalculating = function() {
-    return true;
-};
-
-/** Calculate the data.  */
-Folder.prototype.calculate = function() {
-    //we don't need to calculate since the calculate is done on the fly
-    //we just need to make sure the impactors are set
-    this.initializeImpactors();
-    
-    this.clearCalcPending();
-};
-
-//------------------------------
-// Dependent Methods
-//------------------------------
-
-/** This method updates the dependencies of any children
- * based on an object being added. */
-Folder.prototype.updateDependeciesForModelChange = function(recalculateList) {
-    for(var key in this.childMap) {
-        var child = this.childMap[key];
-        if(child.isDependent) {
-            child.updateDependeciesForModelChange(recalculateList);
+        //initialize data value if this is a new folder
+        if(!instanceToCopy) {
+            let dataMap = {};
+            Object.freeze(dataMap);
+            this.setData(dataMap);
         }
     }
-};
 
-//------------------------------
-// Member Methods
-//------------------------------
+    //------------------------------
+    // Parent Methods
+    //------------------------------
 
-/** This method creates a member from a json. It should be implemented as a static
- * method in a non-abstract class. */ 
-Folder.fromJson = function(owner,json) {
-    var folder = new Folder(json.name,owner);
-    if(json.childrenNotWriteable) {
-        folder.setChildrenWriteable(false);
+    onAddChild(model,child) {
+        //set all children as dependents
+        let dependsOnMap = this.calculateDependents(model);
+        this.updateDependencies(model,dependsOnMap);
     }
-    return folder;
-};
 
-/** This method adds any additional data to the json to save for this member. 
- * @protected */
-Folder.prototype.addToJson = function(json) {
-	json.children = {};
-    
-    if(!this.getChildrenWriteable()) {
-        json.childrenNotWriteable = true;
+    onRemoveChild(model,child) {
+        //set all children as dependents
+        let dependsOnMap = this.calculateDependents(model);
+        this.updateDependencies(model,dependsOnMap);
     }
-    
-    for(var key in this.childMap) {
-        var child = this.childMap[key];
-        json.children[key] = child.toJson();
+
+    /** this method gets the hame the children inherit for the full name. */
+    getPossesionNameBase(model) {
+        return this.getFullName(model) + ".";
     }
-};
 
-Folder.prototype.onClose = function () {
-    for(var key in this.childMap) {
-        var child = this.childMap[key];
-        if(child.onClose) child.onClose();
+    //------------------------------
+    // Dependent Methods
+    //------------------------------
+
+    /** There is no calculation for the folder base on dependents. */
+    memberUsesRecalculation() {
+        return true;
     }
-};
 
-//============================
-// Private methods
-//============================
+    /** Calculate the data.  */
+    calculate(model) {
+        //make sure impactors are calculated
+        this.initializeImpactors(model);
+        
+        //folders work slightly different because of pass thorugh dependencies. We will set the folder data
+        //value regardless of the state, meaning if the state is error or pending or invalid, we still set
+        //the data, along with maintaining the current state.
 
-/** This method updates the table data object in the folder data map. 
- * @private */
-Folder.prototype.calculateDependents = function() {
-    var newDependsOn = [];
-    for(var name in this.childMap) {
-        var child = this.childMap[name];
-        newDependsOn.push(child);
+        //make an immutable map of the data for each child
+        let childIdMap = this.getChildIdMap();
+        let dataMap = {};
+        for(let name in childIdMap) {
+            let childId = childIdMap[name];
+            let child = model.lookupMemberById(childId);
+            if(child) {
+                dataMap[name] = child.getData();
+            }
+        }
+        Object.freeze(dataMap);
+
+        let state = this.getState();
+        if((state != apogeeutil.STATE_ERROR)&&(state != apogeeutil.STATE_PENDING)&&(state != apogeeutil.STATE_INVALID)) {
+            //set the data state if there is no child error or other exceptional case
+            this.setData(dataMap);
+        }
+        else {
+            //if there is a child exceptional case, still set the data for the sake of pass through dependencies
+            this.forceUpdateDataWithoutStateChange(dataMap);
+        }
+        
+        //clear calc pending flag
+        this.clearCalcPending();
     }
-    this.updateDependencies(newDependsOn);
-};
 
-/** This method creates a new immutable data map, either adding a give name and data or
- * removing a name. To remove a name from the map, leave "addData" as undefined. 
- * @private */
-Folder.prototype.spliceDataMap = function(addOrRemoveName,addData) {
-	var newDataMap = {};
-	
-	//copy old data
-	for(var key in this.dataMap) {
-		if(key !== addOrRemoveName) {
-			newDataMap[key] = this.dataMap[key];
-		}
-	}
-	//add or update thiis child data
-	if(addData !== undefined) {
-		newDataMap[addOrRemoveName] = addData;
-	}
-	
-	//make this immutable and set it as data for this folder
-	Object.freeze(newDataMap);
-	this.dataMap = newDataMap;
-	this.setData(this.dataMap);
-};
+    /** This method updates the dependencies of any children
+     * based on an object being added. */
+    updateDependeciesForModelChange(model,additionalUpdatedMembers) {
+
+        //update dependencies of this folder
+        let oldDependsOnMap = this.getDependsOn();
+        let newDependsOnMap = this.calculateDependents(model);
+        if(!apogeeutil.jsonEquals(oldDependsOnMap,newDependsOnMap)) {
+            //if dependencies changes, make a new mutable copy and add this to 
+            //the updated values list
+            let mutableMemberCopy = model.getMutableMember(this.getId());
+            mutableMemberCopy.updateDependencies(model,newDependsOnMap);
+            additionalUpdatedMembers.push(mutableMemberCopy);
+        }
+
+        //call update in children
+        let childIdMap = this.getChildIdMap();
+        for(var name in childIdMap) {
+            let childId = childIdMap[name];
+            var child = model.lookupMemberById(childId);
+            if((child)&&(child.isDependent)) {
+                child.updateDependeciesForModelChange(model,additionalUpdatedMembers);
+            }
+        }
+    }
+
+    //------------------------------
+    // Member Methods
+    //------------------------------
+
+    /** This method creates a member from a json. It should be implemented as a static
+     * method in a non-abstract class. */ 
+    static fromJson(parentId,json) {
+        var folder = new Folder(json.name,parentId);
+
+        if(json.childrenNotWriteable) {
+            folder.setChildrenWriteable(false);
+        }
+
+        return folder;
+    }
+
+    /** This method adds any additional data to the json to save for this member. 
+     * @protected */
+    addToJson(model,json) {
+        json.children = {};
+        
+        if(!this.getChildrenWriteable()) {
+            json.childrenNotWriteable = true;
+        }
+        
+        let childIdMap = this.getChildIdMap();
+        for(var name in childIdMap) {
+            let childId = childIdMap[name];
+            let child = model.lookupMemberById(childId);
+            json.children[name] = child.toJson(model);
+        }
+    }
+
+    //------------------------------
+    // context holder Methods
+    //------------------------------
+
+    /** This method retrieve creates the loaded context manager. */
+    createContextManager() {
+        //set the context manager
+        var contextManager = new ContextManager(this);
+        
+        //add an entry for this folder
+        var myEntry = {};
+        myEntry.contextHolderAsParent = true;
+        contextManager.addToContextList(myEntry);
+        
+        return contextManager;
+    }
+
+    //============================
+    // Private methods
+    //============================
+
+    /** This method calculates the dependencies for this folder. 
+     * @private */
+    calculateDependents(model) {
+        let dependsOnMap = [];
+        let childIdMap = this.getChildIdMap();
+        for(var name in childIdMap) {
+            var childId = childIdMap[name];
+            dependsOnMap[childId] = apogeeutil.NORMAL_DEPENDENCY;
+        }
+        return dependsOnMap;
+    }
+}
+
+//add components to this class                     
+apogeeutil.mixin(Folder,ContextHolder);
+apogeeutil.mixin(Folder,Parent);
 
 //============================
 // Static methods
 //============================
+
 
 Folder.generator = {};
 Folder.generator.displayName = "Folder";
@@ -9886,765 +9619,377 @@ Folder.generator.setDataOk = false;
 Folder.generator.setCodeOk = false;
 
 //register this member
-Workspace.addMemberGenerator(Folder.generator);
+Model.addMemberGenerator(Folder.generator);
 
-/* 
- * This class manages the command history for undo/redo.
- * 
- * Commands that can be undone are stored in a circular queue with a length that is optionally 
- * settable at startup. (Otherwise a default len this used.)
- * 
- * Some rules for the undo/redo queue:
- * - only a max number of commands are stored
- * - when a command is undone or redone, the next undo and redo position is updated
- * - new commands are inserted replacing the next redo command (if there is one, otherwise they areput at the end)
- * - once the max number of commands are reached, additional added commands replace he oldeest command in the queue
- * 
- * The command manager fires an event each time the command history is updated.
- */
-class CommandHistory {
-    constructor(commandManager, eventManager, optionalUndoCommandCount) {
-        this.commandManager = commandManager;
-        this.eventManager = eventManager;
-        this.undoCommandCount = (optionalUndoCommandCount !== undefined) ? optionalUndoCommandCount : CommandHistory.DEFAULT_UNDO_COMMAND_COUNT;
-        this.clearHistory();
+/** This is a folderFunction, which is basically a function
+ * that is expanded into data objects. */
+class FolderFunction extends DependentMember {
+
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed);
+
+        //mixin init where needed
+        this.contextHolderMixinInit();
+        this.parentMixinInit(instanceToCopy);
+
+        //==============
+        //Fields
+        //==============
+        //Initailize these if this is a new instance
+        if(!instanceToCopy) {
+            //set to an empty function
+            this.setData(function(){});
+
+            //this field is used to disable the calculation of the value of this function
+            //It is used in the "virtual model" to prevent any unnecessary downstream calculations
+            this.setField("sterilized",false);
+        }
+
+        //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        this.temporaryVirtualModelRunContext = {
+            doFutureAction: function(modelId,actionData) {
+                let msg = "NOT IPLEMENTED: Asynchronous actions in folder function!";
+                alert(msg);
+                throw new Error(msg);
+            }
+        };
+        //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     }
-    
-    /** This method executes the given command and, if applicable, adds it to the queue. */
-    addToHistory(undoCommand,redoCommand,description) {
+
+    /** This gets the internal forlder for the folderFunction. */
+    getInternalFolder(model) {
+        return this.lookupChild(model,"body");
+    }
+
+    /** This gets the name of the return object for the folderFunction function. */
+    getReturnValueString() {
+        return this.getField("returnValue");
+    }
+
+    /** This gets the arg list of the folderFunction function. */
+    getArgList() {
+        return this.getField("argList");
+    }
+
+    //------------------------------
+    // Member Methods
+    //------------------------------
+
+    /** This method creates a member from a json. It should be implemented as a static
+     * method in a non-abstract class. */ 
+    static fromJson(parentId,json) {
+        let member = new FolderFunction(json.name,parentId);
+
+        //set initial data
+        let initialData = json.updateData;
+        let argList = ((initialData)&&(initialData.argList !== undefined)) ? initialData.argList : [];
+        member.setField("argList",argList);
+        let returnValueString = ((initialData)&&(initialData.returnValue !== undefined)) ? initialData.returnValue : [];
+        member.setField("returnValue",returnValueString);
         
-        if((!undoCommand)||(!redoCommand)) {
-            alert("Both the undo command and redo command must be provided");
+        return member;
+    }
+
+    /** This method adds any additional data to the json saved for this member. 
+     * @protected */
+    addToJson(model,json) {
+        json.updateData = {};
+        json.updateData.argList = this.getField("argList");
+        json.updateData.returnValue = this.getField("returnValue");
+        json.children = {};
+        let childIdMap = this.getChildIdMap();
+        for(var name in childIdMap) {
+            var childId = childIdMap[name];
+            let child = model.lookupMemberById(childId);
+            if(child) {
+                json.children[name] = child.toJson(model);
+            }
+        }
+    }
+
+    /** This method extends the base method to get the property values
+     * for the property editting. */
+    static readProperties(member,values) {
+        var argList = member.getArgList();
+        var argListString = argList.toString();
+        values.argListString = argListString;
+        values.returnValueString = member.getReturnValueString();
+        return values;
+    }
+
+    /** This method executes a property update. */
+    static getPropertyUpdateAction(folderFunction,newValues) {
+        let updateData = newValues.updateData;
+        if((updateData)&&((updateData.argList !== undefined)||(updateData.returnValue !== undefined))) {
+
+            var argList = updateData.argList ? updateData.argList : folderFunction.getArgList();
+            var returnValueString = updateData.returnValue ? updateData.returnValue : folderFunction.getReturnValueString();
+    
+            var actionData = {};
+            actionData.action = "updateFolderFunction";
+            actionData.memberId = folderFunction.getId();
+            actionData.argList = argList;
+            actionData.returnValueString = returnValueString;
+            return actionData;
+        }    
+        else {
+            return null;
+        }
+    }
+
+    //-------------------------------
+    // Dependent Methods
+    //-------------------------------
+        
+
+    /** If this is true the member must be executed. */
+    memberUsesRecalculation() {
+        return true;
+    }
+
+    /** This updates the member data based on the function. It returns
+     * true for success and false if there is an error.  */
+    calculate(model) {  
+
+        //if this function is sterilized, we will just set the value to invalid value.
+        //This prevents any object which calls this function from updating. It is inended to be 
+        //used in the virtual workspace assoicated with this folder function
+        if(this.getField("sterilized")) {
+            this.setResultInvalid();
+            this.clearCalcPending();
             return;
         }
-        
-        var command = {};
-        command.redoCmd = redoCommand;
-        command.undoCmd = undoCommand;
-        command.desc = description;
-        
-        this._saveCommand(command);
 
-        //set workspace dirty whenever a command is added to history (description as argument thrown in gratuitiously, or now)
-        this.eventManager.dispatchEvent("workspaceDirty",command.desc);
-    }
-    
-    /** This method clears the undo/redo history. */
-    clearHistory() {
-        //set a fixed size array for our circular queue
-        this.undoQueue = new Array(this.undoCommandCount);
-        
-        //we will keep cmd index values that DO NOT wrap.
-        //we will assume we do not overflow the integers for now
-        //to get an array index, we convert from cmd index to array index with a function using modulo
-        
-        //this where we will put the next added command
-        this.nextInsertCmdIndex = 0;
-        //this is last index that has a valid command, but only if it is greater than or equal to our first cmd index
-        this.lastUsedCmdIndex = -1;
-        //this is the first command index that has a valid command, but only if it is less than or equal to the last command index.
-        this.firstUsedCmdIndex = 0;
-        
-        if(this.eventManager) {
-            this.eventManager.dispatchEvent("historyUpdate",this);
-        }
-        
-    }
-    
-    /** If there is an undo command, this method will return the description if there
-     * is one or an empty string. If there is no undo command, this method will return
-     * the value CommandHistory.NO_COMMAND. */
-    getNextUndoDesc() {
-        let command = this._getNextUndoCommand(false);
-        if(command) {
-            if(command.desc) {
-                return command.desc
-            }
-            else {
-                return "";
-            }
-        }
-        else {
-            return CommandHistory.NO_COMMAND;
-        }
-    }
-    
-    /** If there is an redo command, this method will return the description if there
-     * is one or an empty string. If there is no undo command, this method will return
-     * the value CommandHistory.NO_COMMAND. To test equality with
-     * CommandHistory.NO_COMMAND, use == or ===. Do not test equality
-     * with json equals!*/
-    getNextRedoDesc() {
-        let command = this._getNextRedoCommand(false);
-        if(command) {
-            if(command.desc) {
-                return command.desc
-            }
-            else {
-                return "";
-            }
-        }
-        else {
-            return CommandHistory.NO_COMMAND;
-        }
-    }
-    
-    /** This method undoes the next command to be undone. */
-    undo() {
-        let command = this._getNextUndoCommand(true);
-        if((command)&&(command.undoCmd)) {
-            let commandResult = this.commandManager.executeCommand(command.undoCmd,null,true);
-            if(!commandResult.cmdDone) {
-                this._commandUndoneFailed();
-            }
-        }
-        else {
-            //the ui should not let us get here
-            alert("There is not command to undo");
-        }  
-    }
-    
-    /** This method redones the next command to be redone. */
-    redo() {
-        let command = this._getNextRedoCommand(true);
-        if((command)&&(command.redoCmd)) {
-            let commandResult = this.commandManager.executeCommand(command.redoCmd,null,true);
-            if(!commandResult.cmdDone) {
-                this.commandRedoneFailed();
-            }
-        }
-        else {
-            //the ui should not let us get here
-            alert("There is not command to redo");
-        }  
-    }
-    
-    //=================================
-    // Private Methods
-    //=================================
+        //make sure the data is set in each impactor
+        this.initializeImpactors(model);
 
-    //-------------------------
-    // These functions manage the undo queue
-    //-------------------------
-    
-    _saveCommand(command) {
-        let oldNextCmdIndex = this.nextInsertCmdIndex;
-        let oldLastCmdIndex = this.lastUsedCmdIndex;
-        let oldFirstCmdIndex = this.firstUsedCmdIndex;
-        
-        let insertArrayIndex = this._getArrayIndex(this.nextInsertCmdIndex);
-        this.undoQueue[insertArrayIndex] = command;
-        
-        //update cmd index vlues
-        // -last used index is the one just added
-        this.lastUsedCmdIndex = this.nextInsertCmdIndex;
-        // -next insert index is one more than the previous (wrapping is NOT done in the cmd index values, only in the array index values)
-        this.nextInsertCmdIndex++;
-        
-        // -set the first used index
-        if(oldFirstCmdIndex > oldLastCmdIndex) {
-            //we need to set a valid value
-            this.firstUsedCmdIndex == oldNextCmdIndex;
-        }
-        else {
-            //check for wrapping commands
-            let oldFirstArrayIndex = this._getArrayIndex(oldFirstCmdIndex);
-            if(insertArrayIndex == oldFirstArrayIndex) {
-                this.firstUsedCmdIndex++;
-            }
-        }
-        
-        //clear out any now unreachable redo commands
-        if(this.nextInsertCmdIndex <= oldLastCmdIndex) {
-            this._clearCommands(this.nextInsertCmdIndex,oldLastCmdIndex);
-        }    
-    }
-    
-    _getNextUndoCommand(doQueuePositionUpdate) {
-        if((this.nextInsertCmdIndex - 1 >= this.firstUsedCmdIndex)&&(this.nextInsertCmdIndex - 1 <= this.lastUsedCmdIndex)) {
-            let undoArrayIndex = this._getArrayIndex(this.nextInsertCmdIndex - 1);
-            
-            //update the queue positions, if requested
-            if(doQueuePositionUpdate) {
-                this.nextInsertCmdIndex--;
-                
-                //notify of change to command history
-                if(this.eventManager) {
-                    this.eventManager.dispatchEvent("historyUpdate",this);
-                }
-                
-            }
-            
-            return this.undoQueue[undoArrayIndex];
-        }
-        else {
-            //no available command
-            return null;
-        }
-    }
-    
-    _getNextRedoCommand(doQueuePositionUpdate) {
-        if((this.nextInsertCmdIndex >= this.firstUsedCmdIndex)&&(this.nextInsertCmdIndex <= this.lastUsedCmdIndex)) {
-            let redoArrayIndex = this._getArrayIndex(this.nextInsertCmdIndex);
-            
-            //update the queue positions, if requested
-            if(doQueuePositionUpdate) {
-                this.nextInsertCmdIndex++;
-                
-                //notify of change to command history
-                if(this.eventManager) {
-                    this.eventManager.dispatchEvent("historyUpdate",this);
-                }
-            }
-            
-            return this.undoQueue[redoArrayIndex];
-        }
-        else {
-            return null;
-        }
-    }
-    
-    _commandUndoneFailed() {
-        //clear the undone command so it can not be redone (at the current position this.nextInsertCmdIndex)
-        //and clear all commands previous to this one
-        this._clearCommands(this.firstUsedCmdIndex,this.nextInsertCmdIndex);
-        this.firstUsedCmdIndex = this.nextInsertCmdIndex;
-        //we also need to update the last used index if it was the cmd we just failed to undo
-        if(this.lastUsedCmdIndex === this.nextInsertCmdIndex) {
-            this.lastUsedCmdIndex--;
-        }
-        
-        //notify of change to command history
-        if(this.eventManager) {
-            this.eventManager.dispatchEvent("historyUpdate",this);
-        }
-    }
-    
-    _commandRedoneFailed() {
-        //clear the redone command so it can not be undone (at the current position this.nextInsertCmdIndex-1)
-        //and clear all commands after to this one
-        this._clearCommands(this.nextInsertCmdIndex-1,this.lastUsedCmdIndex);
-        this.lastUsedCmdIndex = this.nextInsertCmdIndex-1;
-        //we also need to update the first used index if it was the cmd we just failed to redo
-        if(this.firstUsedCmdIndex === this.nextInsertCmdIndex-1) {
-            this.firstUsedCmdIndex++;
-        }
-        
-        //notify of change to command history
-        if(this.eventManager) {
-            this.eventManager.dispatchEvent("historyUpdate",this);
-        }
-    }
-    
-    _getArrayIndex(cmdIndex) {
-        return cmdIndex % this.undoCommandCount;
-    }
-    
-    _clearCommands(startCmdIndex,endCmdIndex) {
-        for(var cmdIndex = startCmdIndex; cmdIndex <= endCmdIndex; cmdIndex++) {
-            let arrayIndex = this._getArrayIndex(cmdIndex);
-            this.undoQueue[arrayIndex] = undefined;
-        }
-    }
-}
-
-/** This is a token to represent there is no command available, either for 
- * undo or redo. */
-CommandHistory.NO_COMMAND = {};
-
-/** This is the default number of stored undo/redo commands */
-CommandHistory.DEFAULT_UNDO_COMMAND_COUNT = 50;
-
-/* 
- * This class manages executing commands and storign and operating the command history for undo/redo.
- * It provides standarde error handling for the commands in addition to managing undo/redo or commands.
- * 
- * Command Structure:
- * {
- *      type - This is a string giving the command type. This will be used to dispatch
- *      the command to the proper execution function. The string should correspond to 
- *      a command that was registered with the regiter command function.  
- *     
- *     ?: setsDirty?
- *     
- *     ?: noUndo?
- *     
- *     (everything else depends on the specific command)
- * }
- * 
- * Command Object - Should be registered with "registerFunction". It should contain the following things:
- * - function executeCommand(workspaceUI,commandData,optionalAsynchOnComplete) = This exectues the command and return a commandResult object.
- * - function createUnfoCommand(workspceUI,commandData) - This creates an undo command json from the given command json.
- * - string COMMAND_TYPE - This is the command type.
- *  
- * Command Result:
- * After executing a command, a commandResult is returned:
- * {
- *      cmdDone: If this is true the command was done. This implies the undo command
- *      should undo the results. If this value is false, no action was taken.
- *
- *      alertMsg - This is a message for the user after the command was executed. This
- *      is typically an error mesasge. There may still be a message if cmdDone is true, 
- *      since that does not necessarily imply the command was exectued completely
- *      as intended.
- *      
- *      isFatal - If this flag is set there was an error that may have left the 
- *      program in an inoperable or unpredictably state and the program should be
- *      aborted. 
- *      
- *      (all other data depends on the specific command)
- *
- */
-class CommandManager {
-    constructor(app,eventManager) {
-        this.app = app;
-        this.eventManager = eventManager;
-
-        this.commandHistory = new CommandHistory(this,eventManager);
-    }
-    
-    /** This method executes the given command and, if applicable, adds it to the queue. 
-     * Supress history does not add this command to the history. It is used by the history for
-     * undo commands/redo commands.
-    */
-    executeCommand(command,asynchOnComplete,suppressFromHistory) {
-        var workspaceUI = this.app.getWorkspaceUI();
-        let commandResult;
-        
-        var commandObject = CommandManager.getCommandObject(command.type);
-
-        //FOR NOW? - MAKE UNDO COMMAND BEFORE EXECUTING COMMAND, IF WE NEED IT (because it is sometimes made by reading the current state)
-        let undoCommand;
-        let description;
-        if((!suppressFromHistory)&&(commandObject.createUndoCommand)) {   
-            undoCommand = commandObject.createUndoCommand(workspaceUI,command);  
-            description = commandObject.COMMAND_TYPE; //need a better description
-        }
-
-        if(commandObject) {
+        let state = this.getState();
+        if((state != apogeeutil.STATE_ERROR)&&(state != apogeeutil.STATE_PENDING)&&(state != apogeeutil.STATE_INVALID)) {
+            //check for code errors, if so set a data error
             try {
-                commandResult = commandObject.executeCommand(workspaceUI,command,asynchOnComplete);
+                var folderFunctionFunction = this.getFolderFunctionFunction(model);
+                this.setData(folderFunctionFunction);
             }
             catch(error) {
                 if(error.stack) console.error(error.stack);
                 
-                commandResult = {};
-                commandResult.cmdDone = false;
-                commandResult.alertMsg = "Unknown error executing command: " + error.message;
-                commandResult.isFatal = true;
-                
+                //error in calculation
+                this.setError(error);
             }
         }
-        else {
-            commandResult = {};
-            commandResult.cmdDone = false;
-            commandResult.alertMsg = "Command type not found: " + command.type;
-        }
         
-        //history??
-        //this is temporary code
-        if((commandResult.cmdDone)&&(undoCommand)) {   
-            this.commandHistory.addToHistory(undoCommand,command,description);
-        }
-        
-        //fire events!!
-        
-        //display? Including for fatal errors?
-        
-        if(commandResult.alertMsg) CommandManager.errorAlert(commandResult.alertMsg,commandResult.isFatal);
-        
-        return commandResult;
+        this.clearCalcPending();
     }
 
-    /** This returns the command history. */
-    getCommandHistory() {
-        return this.commandHistory;
-    }
-    
-    /** This message does a standard error alert for the user. If the error is
-     * fatal, meaning the application is not in a stable state, the flag isFatal
-     * should be set to true. Otherwise it can be omitted or set to false.  */
-    static errorAlert(errorMsg,isFatal) {
-        if(isFatal) {
-            errorMsg = "Fatal Error: The application is in an indterminate state and should be closed!. " + errorMsg;
-        }
-        
-        alert(errorMsg);
-    }
-    
-    /** This registers a command. The command object should hold two functions,
-     * executeCommand(workspaceUI,commandData,optionalAsynchOnComplete) and, if applicable, createUndoCommand(workspaceUI,commandData)
-     * and it should have the constant COMMAND_TYPE.
-     */
-    static registerCommand(commandObject) {
-        
-        //repeat warning
-        let existingCommandObject = CommandManager.commandMap[commandObject.COMMAND_TYPE];
-        if(existingCommandObject) {
-            alert("The given command already exists in the command manager: " + commandObject.COMMAND_TYPE + ". It will be replaced with the new command");
-        }
-        
-        CommandManager.commandMap[commandObject.COMMAND_TYPE] = commandObject;
-    }
-    
-    static getCommandObject(commandType) {
-        return CommandManager.commandMap[commandType];
-    }
-    
-}
+    /** This method updates the dependencies of any children
+     * based on an object being added. */
+    updateDependeciesForModelChange(model,additionalUpdatedMembers) {
 
-/** This is a map of commands accessibly to the command manager. */
-CommandManager.commandMap = {};
+        //update dependencies of this folder
+        let oldDependsOnMap = this.getDependsOn();
+        let newDependsOnMap = this.calculateDependents(model);
+        if(!apogeeutil.jsonEquals(oldDependsOnMap,newDependsOnMap)) {
+            //if dependencies changes, make a new mutable copy and add this to 
+            //the updated values list
+            let mutableMemberCopy = model.getMutableMember(this.getId());
+            mutableMemberCopy.updateDependencies(model,newDependsOnMap);
+            additionalUpdatedMembers.push(mutableMemberCopy);
+        }
 
-/** This is a folderFunction, which is basically a function
- * that is expanded into data objects. */
-function FolderFunction(name,owner,initialData) {
-    //base init
-    Member.init.call(this,name,FolderFunction.generator);
-    Dependent$1.init.call(this);
-    ContextHolder.init.call(this);
-    Owner.init.call(this);
-    RootHolder.init.call(this);
-    
-    this.initOwner(owner);
-    
-    //set initial data
-    this.argList = initialData.argList !== undefined ? initialData.argList : [];
-    this.returnValueString = initialData.returnValue !== undefined ? initialData.returnValue : [];
-    //set to an empty function
-    this.setData(function(){});
-    this.fieldUpdated("argList");
-    this.fieldUpdated("returnValue");
+        //call update in children
+        let childIdMap = this.getChildIdMap();
+        for(var name in childIdMap) {
+            var childId = childIdMap[name];
+            let child = model.lookupMemberById(childId);
+            if((child)&&(child.isDependent)) {
+                child.updateDependeciesForModelChange(model,additionalUpdatedMembers);
+            }
+        }
+    }
+
+    //------------------------------
+    //ContextHolder methods
+    //------------------------------
+
+    /** This method retrieve creates the loaded context manager. */
+    createContextManager() {
+        //set the context manager
+        var contextManager = new ContextManager(this);
+        
+        //add an entry for this folder
+        var myEntry = {};
+        myEntry.contextHolderAsParent = true;
+        contextManager.addToContextList(myEntry);
+        
+        return contextManager;
+    }
+
+    //------------------------------
+    //Parent methods
+    //------------------------------
+
+    onAddChild(model,child) {
+        //set all children as dependents
+        let dependsOnMap = this.calculateDependents(model);
+        this.updateDependencies(model,dependsOnMap);
+    }
+
+    onRemoveChild(model,child) {
+        //set all children as dependents
+        let dependsOnMap = this.calculateDependents(model);
+        this.updateDependencies(model,dependsOnMap);
+    }
+
+    /** this method gets the hame the children inherit for the full name. */
+    getPossesionNameBase(model) {
+        return this.getFullName(model) + ".";
+    }
+
+    //============================
+    // Private methods
+    //============================
+
+    /** This method updates the table data object in the folder data map. 
+     * @private */
+    calculateDependents(model) {
+        let dependsOnMap = [];
+        let childIdMap = this.getChildIdMap();
+        for(var name in childIdMap) {
+            var childId = childIdMap[name];
+            dependsOnMap[childId] = apogeeutil.NORMAL_DEPENDENCY;
+        }
+        return dependsOnMap;
+    }
+
+    /** This is called from the update action. It should not be called externally. */
+    setReturnValueString(returnValueString) {
+        let existingRVS = this.getField("returnValue");
+        if(existingRVS != returnValueString) {
+            this.setField("returnValue",returnValueString);
+        }
+    }
+
+    /** This is called from the update action. It should not be called externally. */
+    setArgList(argList) {
+        let existingArgList = this.getField("argList");
+        if(existingArgList != argList) {
+            this.setField("argList",argList);
+        }
+    }
+
+    /** This method creates the folderFunction function. It is called from the update action 
+     * and should not be called externally. 
+     * @private */
+    getFolderFunctionFunction(model) {
+
+        //create a copy of the model to do the function calculation - we don't update the UI display version
+        var virtualModel;
+        var inputMemberIdArray;
+        var returnValueMemberId; 
+        
+        var initialized = false;
+        
+        var folderFunctionFunction = (...argumentArray) => {
+            
+            if(!initialized) {
+                //get the ids of the inputs and outputs. We can use the real instance to look these up since they don't change.
+                let internalFolder = this.getInternalFolder(model);
+                inputMemberIdArray = this.loadInputElementIds(model,internalFolder);
+                returnValueMemberId = this.loadOutputElementId(model,internalFolder); 
+
+                //prepare the virtual function
+                //this is a copy of the original model, but with any member that is unlocked replaced.
+                //to prevent us from modifying an object in use by our current real model calculation.
+                virtualModel = model.getCleanCopy(this.temporaryVirtualModelRunContext);
+
+                //we want to set the folder function as "sterilized" - this prevents any downstream work from the folder function updating
+                let commandData = {};
+                commandData.action = "setField";
+                commandData.memberId = this.getId();
+                commandData.fieldName = "sterilized";
+                commandData.fieldValue = "true";
+                let actionResult = doAction(virtualModel,commandData);
+
+                //we should do something with the action result
+                if(!actionResult.actionDone) {
+                    throw new Error("Error calculating folder function");
+                }
+                
+                initialized = true;
+            }
+            
+            //create an update array to set the table values for the input elements  
+            var updateActionList = [];
+            for(var i = 0; i < inputMemberIdArray.length; i++) {
+                var entry = {};
+                entry.action = "updateData";
+                entry.memberId = inputMemberIdArray[i];
+                entry.data = argumentArray[i];
+                updateActionList.push(entry);
+            }
+            
+            var actionData = {};
+            actionData.action = "compoundAction";
+            actionData.actions = updateActionList;
+
+            //apply the update
+            let workingVirtualModel = virtualModel.getMutableModel();
+            var actionResult = doAction(workingVirtualModel,actionData);        
+            if(actionResult.actionDone) {
+                //retrieve the result
+                if(returnValueMemberId) {
+                    let returnValueMember = workingVirtualModel.lookupMemberById(returnValueMemberId);
+                    
+                    if(returnValueMember.getState() == apogeeutil.STATE_PENDING) {
+                        throw new Error("A folder function must not be asynchronous: " + this.getFullName(workingVirtualModel));
+                    }
+                    
+                    //get the resulting output
+                    return returnValueMember.getData();
+                }
+                else {
+                    //no return value found
+                    return undefined;
+                }
+            }
+            else {
+                let errorMsg = actionResult.errorMsg ? actionResult.errorMsg : "Unknown error evaluating Folder Function " + this.getName();
+                throw new Error(errorMsg);
+            }
+        };
+        
+        return folderFunctionFunction;    
+    }
+
+    /** This method loads the input argument members from the virtual model. 
+     * @private */
+    loadInputElementIds(model,internalFolder) {
+        let argMembers = [];
+        let argList = this.getField("argList");
+        for(var i = 0; i < argList.length; i++) {
+            var argName = argList[i];
+            var argMember = internalFolder.lookupChild(model,argName);
+            if(argMember) {
+                argMembers.push(argMember.getId());
+            }     
+        }
+        return argMembers;
+    }
+
+    /** This method loads the output member from the virtual model. 
+     * @private  */
+    loadOutputElementId(model,internalFolder) {
+        let returnValueString = this.getField("returnValue");
+        var returnValueMember = internalFolder.lookupChild(model,returnValueString);
+        return returnValueMember.getId();
+    }
 }
 
 //add components to this class
-base.mixin(FolderFunction,Member);
-base.mixin(FolderFunction,Dependent$1);
-base.mixin(FolderFunction,ContextHolder);
-base.mixin(FolderFunction,Owner);
-base.mixin(FolderFunction,RootHolder);
+apogeeutil.mixin(FolderFunction,ContextHolder);
+apogeeutil.mixin(FolderFunction,Parent);
 
-FolderFunction.INTERNAL_FOLDER_NAME = "root";
-
-/** This gets the internal forlder for the folderFunction. */
-FolderFunction.prototype.getInternalFolder = function() {
-    return this.internalFolder;
-};
-
-/** Implemnetation of get root for folder function. */
-FolderFunction.prototype.getRoot = function() {
-    return this.getInternalFolder();
-};
-
-/** This method sets the root object - implemented from RootHolder.  */
-FolderFunction.prototype.setRoot = function(child) {
-    this.internalFolder = child;
-    var newDependsOn = [];
-    if(child) newDependsOn.push(child);
-    this.updateDependencies(newDependsOn);
-};
-
-/** This gets the name of the return object for the folderFunction function. */
-FolderFunction.prototype.getReturnValueString = function() {
-    return this.returnValueString;
-};
-
-/** This gets the arg list of the folderFunction function. */
-FolderFunction.prototype.getArgList = function() {
-    return this.argList;
-};
-
-//------------------------------
-// Member Methods
-//------------------------------
-
-/** This method removes any data from this workspace on closing. */
-FolderFunction.prototype.close = function() {
-    this.internalFolder.onClose();
-};
-
-/** This method creates a member from a json. It should be implemented as a static
- * method in a non-abstract class. */ 
-FolderFunction.fromJson = function(owner,json) {
-    return new FolderFunction(json.name,owner,json.updateData);
-};
-
-/** This method adds any additional data to the json saved for this member. 
- * @protected */
-FolderFunction.prototype.addToJson = function(json) {
-    json.updateData = {};
-    json.updateData.argList = this.argList;
-    json.updateData.returnValue = this.returnValueString;
-    json.children = {};
-    json.children[FolderFunction.INTERNAL_FOLDER_NAME] = this.internalFolder.toJson();
-};
-
-/** This method extends the base method to get the property values
- * for the property editting. */
-FolderFunction.readProperties = function(member,values) {
-    var argList = member.getArgList();
-    var argListString = argList.toString();
-    values.argListString = argListString;
-    values.returnValueString = member.getReturnValueString();
-    return values;
-};
-
-/** This method executes a property update. */
-FolderFunction.getPropertyUpdateAction = function(folderFunction,newValues) {
-    let updateData = newValues.updateData;
-    if((updateData)&&((updateData.argList !== undefined)||(updateData.returnValue !== undefined))) {
-
-        var argList = updateData.argList ? updateData.argList : folderFunction.argList;
-        var returnValueString = updateData.returnValue ? updateData.returnValue : folderFunction.returnValueString;
- 
-        var actionData = {};
-        actionData.action = "updateFolderFunction";
-        actionData.memberName = folderFunction.getFullName();
-        actionData.argList = argList;
-        actionData.returnValueString = returnValueString;
-        return actionData;
-    }    
-    else {
-        return null;
-    }
-};
-
-//-------------------------------
-// Dependent Methods
-//-------------------------------
-    
-
-/** If this is true the member must be executed. */
-FolderFunction.prototype.needsCalculating = function() {
-	return true;
-};
-
-/** This updates the member data based on the function. It returns
- * true for success and false if there is an error.  */
-FolderFunction.prototype.calculate = function() {  
-    //make sure the data is set in each impactor
-    this.initializeImpactors();
-    
-    var folderFunctionErrors = [];
-    
-	//check for code errors, if so set a data error
-    var folderFunctionFunction = this.getFolderFunctionFunction(folderFunctionErrors);
-    
-    if(folderFunctionErrors.length == 0) {
-        this.setData(folderFunctionFunction);
-    }
-    else {
-        //for now I can only set a single error. I will set the first.
-        //I should get way to set multiple
-        this.addErrors(folderFunctionErrors);
-    }
-    
-    this.clearCalcPending();
-};
-
-/** This method updates the dependencies of any children
- * based on an object being added. */
-FolderFunction.prototype.updateDependeciesForModelChange = function(recalculateList) {
-    if(this.internalFolder) {
-        this.internalFolder.updateDependeciesForModelChange(recalculateList);
-    }
-};
-
-//------------------------------
-//ContextHolder methods
-//------------------------------
-
-/** This method retrieve creates the loaded context manager. */
-FolderFunction.prototype.createContextManager = function() {
-    return new ContextManager(this);
-};
-
-//------------------------------
-//Parent methods
-//------------------------------
-
-/** this method gets the table map. */
-FolderFunction.prototype.getChildMap = function() {
-    return this.internalFolder.childMap;
-};
-
-/** This method looks up a child from this folder.  */
-FolderFunction.prototype.lookupChild = function(name) {
-    //check look for object in this folder
-    return this.internalFolder.childMap[name];
-};
-
-//------------------------------
-//Owner methods
-//------------------------------
-
-/** this method gets the hame the children inherit for the full name. */
-FolderFunction.prototype.getPossesionNameBase = function() {
-    return this.getFullName() + ".";
-};
-
-/** This method looks up a member by its full name. */
-FolderFunction.prototype.getMemberByPathArray = function(path,startElement) {
-    if(startElement === undefined) startElement = 0;
-    if(path[startElement] === this.internalFolder.getName()) {
-        if(startElement === path.length-1) {
-            return this.internalFolder;
-        }
-        else {
-            startElement++;
-            return this.internalFolder.lookupChildFromPathArray(path,startElement);
-        }
-    }
-    else {
-        return null;
-    }
-};
-
-
-//==============================
-// Private Methods
-//==============================
-
-/** This is called from the update action. It should not be called externally. */
-FolderFunction.prototype.setReturnValueString = function(returnValueString) {
-    if(this.returnValueString != returnValueString) {
-        this.fieldUpdated("returnValue");
-    }
-    this.returnValueString = returnValueString;
-};
-
-/** This is called from the update action. It should not be called externally. */
-FolderFunction.prototype.setArgList = function(argList) {
-    if(this.argList != argList) {
-        this.fieldUpdated("argList");
-    }
-    this.argList = argList;
-};
-
-/** This method creates the folderFunction function. It is called from the update action 
- * and should not be called externally. 
- * @private */
-FolderFunction.prototype.getFolderFunctionFunction = function(folderFunctionErrors) {
-
-    //create a copy of the workspace to do the function calculation - we don't update the UI display version
-    var virtualWorkspace;
-    var rootFolder;
-    var inputElementArray;
-    var returnValueTable; 
-    
-    var initialized = false;
-    var instance = this;
-    
-    var folderFunctionFunction = function(args) {
-        
-        if(!initialized) {
-            //create a copy of the workspace to do the function calculation - we don't update the UI display version
-            virtualWorkspace = instance.createVirtualWorkspace(folderFunctionErrors);
-	
-    //HANDLE THIS ERROR CASE DIFFERENTLY!!!
-            if(!virtualWorkspace) {
-                return null;
-            }
-
-            //lookup elements from virtual workspace
-            rootFolder = virtualWorkspace.getRoot();
-            inputElementArray = instance.loadInputElements(rootFolder,folderFunctionErrors);
-            returnValueTable = instance.loadOutputElement(rootFolder,folderFunctionErrors); 
-            
-            initialized = true;
-        }
-        
-        //create an update array to set the table values to the elements  
-        var updateActionList = [];
-        for(var i = 0; i < inputElementArray.length; i++) {
-            var entry = {};
-            entry.action = "updateData";
-            entry.memberName = inputElementArray[i].getFullName();
-            entry.data = arguments[i];
-            updateActionList.push(entry);
-        }
-        
-        var actionData = {};
-        actionData.action = "compoundAction";
-        actionData.actions = updateActionList;
-
-        //apply the update
-        var actionResult = doAction(virtualWorkspace,actionData);        
-        if(actionResult.alertMsg) {
-            CommandManager.errorAlert(actionResult.alertMsg);
-        }
-        if(actionResult.actionDone) {
-            //retrieve the result
-            if(returnValueTable) {
-                
-                if(returnValueTable.getResultPending()) {
-                    throw new Error("A folder function must not be asynchronous: " + instance.getFullName());
-                }
-                
-                return returnValueTable.getData();
-            }
-            else {
-                //no return value found
-                return undefined;
-            }
-        }
-    };
-    
-    return folderFunctionFunction;    
-};
-
-/** This method creates a copy of the workspace to be used for the function evvaluation. 
- * @private */
-FolderFunction.prototype.createVirtualWorkspace = function(folderFunctionErrors) {
-    try {
-        var folderJson = this.internalFolder.toJson();
-		var workspaceJson = Workspace.createWorkpaceJsonFromFolderJson(this.getName(),folderJson);
-        var virtualWorkspace = new Workspace(this.getOwner());
-        var actionResult = virtualWorkspace.loadFromJson(workspaceJson);
-        
-        //do something with action result!!!
-        
-        return virtualWorkspace;
-	}
-	catch(error) {
-        var actionError = ActionError.processException(error,"FolderFunction - Code",false);
-		folderFunctionErrors.push(actionError);
-		return null;
-	}
-};
-
-/** This method loads the input argument members from the virtual workspace. 
- * @private */
-FolderFunction.prototype.loadInputElements = function(rootFolder,folderFunctionErrors) {
-    var argMembers = [];
-    for(var i = 0; i < this.argList.length; i++) {
-        var argName = this.argList[i];
-        var argMember = rootFolder.lookupChild(argName);
-        if(argMember) {
-			argMembers.push(argMember);
-		}
-//		else {
-//            //missing input element
-//            var msg = "Input element not found in folderFunction: " + argName;
-//            var actionError = new ActionError(msg,"FolderFunction - Code",this);
-//            folderFunctionErrors.push(actionError);
-//        }       
-    }
-    return argMembers;
-};
-
-/** This method loads the output member from the virtual workspace. 
- * @private  */
-FolderFunction.prototype.loadOutputElement = function(rootFolder,folderFunctionErrors) {
-    var returnValueMember = rootFolder.lookupChild(this.returnValueString);
-//    if(!returnValueMember) {
-//        //missing input element
-//        var msg = "Return element not found in folderFunction: " + this.returnValueString;
-//        var actionError = new ActionError(msg,"FolderFunction - Code",this);
-//        folderFunctionErrors.push(actionError);
-//    }
-    return returnValueMember;
-};
+FolderFunction.INTERNAL_FOLDER_NAME = "body";
 
         
 //============================
@@ -10661,84 +10006,70 @@ FolderFunction.generator.setDataOk = false;
 FolderFunction.generator.setCodeOk = false;
 
 //register this member
-Workspace.addMemberGenerator(FolderFunction.generator);
+Model.addMemberGenerator(FolderFunction.generator);
 
 /** This class encapsulatees a table with no specific functionality. It
  * is intended to be used as a placeholder when a table generator is not found. */
-function ErrorTable(name,owner,completeJson) {
-    //base init
-    Member.init.call(this,name,ErrorTable.generator);
-    //i didn't really want this to be a dependent, bot for now I think they all have to be - check into this.
-    //there are at least two places
-    //- add to recalc list function in action (which I temporarily fixed)
-    //- initialize impactors in dependent, assumes all impactors are dependents (this is also needed 
-    Dependent.init.call(this);
-    
-    this.initOwner(owner);
-    
-    //store this to use during save later
-    this.completeJson = completeJson;
-    this.fieldUpdated("completeJson");
+class ErrorTable extends Member {
 
-    var dummyData = "";
-    this.setData(dummyData);
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed);
+
+        var dummyData = "";
+        this.setData(dummyData);
+    }
+
+    //------------------------------
+    // Member Methods
+    //------------------------------
+
+    /** This method extends set data from member. It also
+     * freezes the object so it is immutable. (in the future we may
+     * consider copying instead, or allowing a choice)*/
+    setData(data) {
+        
+        //make this object immutable
+        apogeeutil.deepFreeze(data);
+
+        //store the new object
+        return super.setData(data);
+    }
+
+    /** This overrides the commplete json to just pass back the entire json sent in. */
+    toJson(model) {
+        return this.getField("completeJson");
+    }
+
+    /** This method creates a member from a json. It should be implemented as a static
+     * method in a non-abstract class. */ 
+    static fromJson(parentId,json) {
+        //note - we send in the complete JSON so we can return is on saving
+        let member = new ErrorTable(json.name,parentId);
+
+        //set the initial data
+        member.setField("completeJson",json);
+
+        return member;
+    }
+
+    //------------------------------
+    // Dependent Methods
+    //------------------------------
+
+    /** This method udpates the dependencies if needed because
+     *a variable was added or removed from the model.  */
+    updateDependeciesForModelChange(model,additionalUpdatedMembers) {
+        //no action
+    }
+
+    /** This is a check to see if the object should be checked for dependencies 
+     * for recalculation. It is safe for this method to always return false and
+     allow the calculation to happen.  */
+   memberUsesRecalculation() {
+        return false;
+    }
+
 }
-
-//add components to this class
-base.mixin(ErrorTable,Member);
-//base.mixin(ErrorTable,Dependent);
-
-//------------------------------
-// Member Methods
-//------------------------------
-
-/** This method extends set data from member. It also
- * freezes the object so it is immutable. (in the future we may
- * consider copying instead, or allowing a choice)*/
-ErrorTable.prototype.setData = function(data) {
-    
-	//make this object immutable
-	base.deepFreeze(data);
-
-	//store the new object
-    return Member.setData.call(this,data);
-};
-
-/** This overrides the commplete json to just pass back the entire json sent in. */
-ErrorTable.prototype.toJson = function() {
-    return this.completeJson;
-};
-
-/** This method creates a member from a json. It should be implemented as a static
- * method in a non-abstract class. */ 
-ErrorTable.fromJson = function(owner,json) {
-    //note - we send in the complete JSON so we can return is on saving
-    return new ErrorTable(json.name,owner,json);
-};
-
-//------------------------------
-// Dependent Methods
-//------------------------------
-
-/** This method udpates the dependencies if needed because
- *a variable was added or removed from the workspace.  */
-ErrorTable.prototype.updateDependeciesForModelChange = function(object) {
-    //no action
-};
-
-/** This is a check to see if the object should be checked for dependencies 
- * for recalculation. It is safe for this method to always return false and
- allow the calculation to happen. 
- * @private */
-ErrorTable.prototype.needsCalculating = function() {
-    return false;
-};
-
-/** This method udpates the dependencies if needed because
- *the passed variable was added.  */
-ErrorTable.prototype.updateDependeciesForModelChange = function(recalculateList) {
-    //no action
-};
 //============================
 // Static methods
 //============================
@@ -10750,7 +10081,650 @@ ErrorTable.generator.createMember = ErrorTable.fromJson;
 ErrorTable.generator.setDataOk = false;
 
 //register this member
-Workspace.addMemberGenerator(ErrorTable.generator);
+Model.addMemberGenerator(ErrorTable.generator);
+
+/** This is self installing command module. This must be imported to install the command.
+ * Note that this module also contains an export, unlike most command modules. 
+ * The export us used so other actions can load child members. 
+ *
+ * Action Data format:
+ * {
+ *  "action": "createMember",
+ *  "parentId": (parent for new member),
+ *  "name": (name of the new member),
+ *  "createData": 
+ *      - name
+ *      - unique table type name
+ *      - additional table specific data
+ *  
+ * }
+ *
+ * MEMBER CREATED EVENT: "created"
+ * Event member format:
+ * {
+ *  "member": (member)
+ * }
+ */
+
+
+/** This is the action function to create a member. 
+ * @private */
+function createMemberAction(model,actionData) {
+    
+    let parent;
+    if(actionData.modelIsParent) {
+        //the parent is the model (It should already be mutable)
+        parent = model;
+    }
+    else {
+        //get the parent, as a new mutable instance
+        parent = model.getMutableMember(actionData.parentId);
+
+        if(!parent) {
+            let actionResult = {};
+            actionResult.actionDone = false;
+            actionResult.errorMsg = "Parent not found for created member";
+            return actionResult;
+        }
+    }
+
+    let memberJson = actionData.createData;
+    let actionResult = createMember(model,parent,memberJson);
+    return actionResult;
+}
+
+/** This function creates a member and any children for that member, returning an action result for
+ * the member. This is exported so create member can be used by other actions, such as load model. */
+function createMember(model,parent,memberJson) {
+
+    let member;
+    let actionResult = {};
+    actionResult.event = ACTION_EVENT;
+    
+    //create member
+    let generator;
+    if(memberJson) {
+        generator = Model.getMemberGenerator(memberJson.type);
+    }
+
+    if(generator) {
+        member = generator.createMember(parent.getId(),memberJson); 
+
+        //pass this child to the parent
+        parent.addChild(model,member);
+
+        //register member with model
+        model.registerMember(member);
+
+        //set action flags for successfull new member
+        actionResult.updateModelDependencies = true;
+        if((member.hasCode)&&(member.hasCode())) {
+            actionResult.recalculateMember = true;
+        }
+        else {
+            actionResult.recalculateDependsOnMembers = true;
+        }
+
+        //instantiate children if there are any
+        if(memberJson.children) {
+            actionResult.childActionResults = [];
+            for(let childName in memberJson.children) {
+                let childJson = memberJson.children[childName];
+                let childActionResult = createMember(model,member,childJson);
+                actionResult.childActionResults.push(childActionResult);
+            }
+        }
+    }
+    else {
+        //type not found! - create a dummy object and add an error to it
+        let errorTableGenerator = Model.getMemberGenerator("appogee.ErrorTable");
+        member = errorTableGenerator.createMember(parent,memberJson);
+        member.setError("Member type not found: " + memberJson.type);
+        
+        //store an error message, but this still counts as command done.
+        actionResult.errorMsg = "Error creating member: member type not found: " + memberJson.type;
+    }
+
+    actionResult.member = member;
+    actionResult.actionDone = true;
+
+    return actionResult;
+}
+
+let ACTION_EVENT = "created";
+
+//This line of code registers the action 
+addActionInfo("createMember",createMemberAction);
+
+/** This is self installing command module. It has no exports
+ * but it must be imported to install the command. 
+ *
+ * Action Data format:
+ * {
+ *  "action": "updateData",
+ *  "memberId": (member to update),
+ *  "data": (new value for the table)
+ *  "sourcePromise": (OPTIONAL - If this is the completion of an asynchronous action, the
+ *      source promise shoudl be included to make sure it has not been overwritten with a
+ *      more recent operation.)
+ *  "promiseRefresh": (OPTIONAL - If this action reinstates a previously set promise,
+ *      this flag will prevent setting additional then/catch statements on the promise)
+ * }
+ * 
+ * Action Data format:
+ * {
+ *  "action": "updateCode",
+ *  "memberId": (member to update),
+ *  "argList": (arg list for the table)
+ *  "functionBody": (function body for the table)
+ *  "supplementalCode": (supplemental code for the table)
+ * }
+ */
+
+
+/** member UPDATED EVENT: "updated"
+ * Event member format:
+ * {
+ *  "member": (member)
+ * }
+ */
+
+
+/** Update code action function. */
+function updateCode(model,actionData) {
+
+    let actionResult = {};
+    actionResult.event = ACTION_EVENT$1;
+    
+    var member = model.getMutableMember(actionData.memberId);
+    if(!member) {
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "Member not found for update member code";
+        return;
+    }
+    actionResult.member = member;
+
+    if((!member.isCodeable)||(!member.getSetCodeOk())) {
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "can not set code on member: " + member.getFullName(model);
+        return;
+    }
+          
+    member.applyCode(actionData.argList,
+        actionData.functionBody,
+        actionData.supplementalCode);
+        
+    actionResult.actionDone = true;
+    actionResult.updateMemberDependencies = true;
+    actionResult.recalculateMember = true;
+
+    return actionResult;
+}
+
+/** Update data action function. */
+function updateData(model,actionData) {
+
+    let actionResult = {};
+    actionResult.event = ACTION_EVENT$1;
+    
+    var member = model.getMutableMember(actionData.memberId);
+    if(!member) {
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "Member not found for update member data";
+        return;
+    }
+    actionResult.member = member;
+    
+    if(!member.getSetDataOk()) {
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "Can not set data on member: " + member.getFullName(model);
+        return;
+    }
+        
+    var data = actionData.data;
+
+    //see if there were any dependents, to know if we need to update them
+    //on setting data there will be none.
+    let hadDependents = ((member.getDependsOn)&&(apogeeutil.jsonObjectLength(member.getDependsOn()) > 0));
+    
+    //if this is the resolution (or rejection) of a previously set promise
+    //make sure the source promise matches the pending promise. Otherwise
+    //we just ignore it (it is out of date)
+    if(actionData.sourcePromise) {
+        if(!member.pendingPromiseMatches(actionData.sourcePromise)) {
+            //no action - this is from an asynch action that has been overwritten. Ignore this command.
+            actionResult.actionDone = true;
+            return actionResult;
+        }
+    }
+    
+    //some cleanup for new data
+    if((member.isCodeable)&&(actionData.sourcePromise === undefined)) {
+        //clear the code - so the data is used
+        //UNLESS this is a delayed set date from a promise, in what case we want to keep the code.
+        member.clearCode(model);
+    }
+
+    //apply the data
+    member.applyData(data);
+
+    //if the data is a promise, we must also initiate the asynchronous setting of the data
+    if((data)&&(data instanceof Promise)) {
+        member.applyAsynchData(model,data);
+    }
+    
+    actionResult.actionDone = true;
+    if(hadDependents) {
+        actionResult.updateMemberDependencies = true;
+    }
+    actionResult.recalculateDependsOnMembers = true;
+
+    return actionResult;
+}
+
+let ACTION_EVENT$1 = "updated";
+
+//The following code registers the actions
+addActionInfo("updateCode",updateCode);
+addActionInfo("updateData",updateData);
+
+/** This is self installing command module. It has no exports
+ * but it must be imported to install the command. 
+ *
+ * Action Data format:
+ * {
+ *  "action": "moveMember",
+ *  "member": (member to move),
+ *  "targetName": (optional new name for the member - defaults to no new name)
+ *  "targetParentId": (optiona new parent id - defaults to old parent id)
+ *  
+ *  \
+ * }
+ */
+
+/** Move member action function */
+function moveMember(model,actionData) {
+
+    let actionResult = {};
+    actionResult.event = ACTION_EVENT$2;
+        
+    var member = model.getMutableMember(actionData.memberId);
+    if(!member) {
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "Member not found for move member";
+        return;
+    }
+    actionResult.member = member;
+
+    //get the name
+    let targetName;
+    if(actionData.targetName) {
+        targetName = actionData.targetName;
+    }
+    else {
+        targetName = member.getName();
+    }
+
+    //get the parent
+    let targetParentId;
+    if(actionData.targetParentId) {
+        targetParentId = actionData.targetParentId;
+    }
+    else {
+        targetParentId = member.getParentId();
+    }
+    var targetParent = model.getMutableMember(targetParentId);
+    if(!targetParent) {
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "Parent not found for move member";
+        return actionResult;
+    }
+
+    //if the parent changes, remove this child from the parent
+    //remove from old named object from the new or old parent - if it stays, we still have the new name
+    let currentParentId = member.getParentId();
+    let currentParent = model.getMutableMember(currentParentId);
+    if(currentParent.isParent) {
+        currentParent.removeChild(model,member);
+    }
+        
+    //appl the move to the member
+    member.move(targetName,targetParent);
+
+    //set the member in the new/old parent (rest in old parent to handle a name change)
+    if(targetParent.isParent) {
+        targetParent.addChild(model,member);
+    }
+
+    //create the action result
+    actionResult.actionDone = true;
+    actionResult.updateModelDependencies = true;
+    actionResult.recalculateDependsOnMembers = true;
+    
+    //add the child action results
+    let childActionResults = addChildResults(model,member);
+    if(childActionResults) {
+        actionResult.childActionResults = childActionResults;
+    }
+    
+    return actionResult;
+}
+
+function addChildResults(model,member) {
+    let childActionResults = [];
+    
+    if((member.isParent)||(member.isRootHolder)) {  
+        var childIdMap = member.getChildIdMap();
+        for(var childName in childIdMap) {
+            var childId = childIdMap[childName];
+            let child = model.lookupMemberById(childId);
+            if(child) {
+                let childActionResult = {};
+                childActionResult.actionDone = true;
+                childActionResult.member = child;
+                childActionResult.event = ACTION_EVENT$2;
+                childActionResult.updateModelDependencies = true;
+                
+                childActionResults.push(childActionResult);
+                
+                //add results for children to this member
+                let grandchildActionResults = addChildResults(model,child);
+                if(grandchildActionResults) {
+                    childActionResult.childActionResults = grandchildActionResults;
+                }
+            }
+        }
+    }
+
+    if(childActionResults.length > 0) {
+        return childActionResults;
+    }
+    else {
+        return null;
+    }
+}
+
+let ACTION_EVENT$2 = "updated";
+
+
+//This line of code registers the action 
+addActionInfo("moveMember",moveMember);
+
+/** This is self installing command module. It has no exports
+ * but it must be imported to install the command. 
+ *
+ * Action Data format:
+ * {
+ *  "action": "deleteMember",
+ *  "member": (member to delete),
+ *  
+ *  "eventInfo": (OUTPUT - event info for the associated delete event)
+ * }
+ *
+ * MEMBER DELETED EVENT: "deleted"
+ * Event object Format:
+ * {
+ *  "member": (member),
+ *  }
+ */
+
+
+/** Delete member action function */
+function deleteMember(model,actionData) {
+    
+    //get a new instance in case any changes are made during delete
+    let member = model.lookupMemberById(actionData.memberId);
+    if(!member) {
+        let actionResult = {};
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "Member not found for delete member";
+        return actionResult;
+    }
+    
+    let actionResult = doDelete(model, member);
+
+    //remove the top-most deleted member from its parent
+    let parentId = member.getParentId();
+    let parent = model.getMutableMember(parentId);
+    if(parent) {
+        parent.removeChild(model,member);
+    }
+
+    return actionResult;
+    
+}
+
+
+/** Here we take any actions for deleting the member and its children,
+ * except "remove from parent", which we will do only for the top deleted member. 
+ * @private */
+function doDelete(model, member) {
+
+    let actionResult = {};
+    actionResult.member = member;
+    actionResult.event = ACTION_EVENT$3;
+    
+    //delete children first
+    if((member.isParent)||(member.isRootHolder)) {
+        actionResult.childActionResults = [];
+        
+        //standard children for parent
+        var childIdMap = member.getChildIdMap();
+        for(var childName in childIdMap) {
+            let childId = childIdMap[childName];
+            let child = model.lookupMemberById(childId);
+            if(child) {
+                let childActionResult = doDelete(model, child);
+                actionResult.childActionResults.push(childActionResult);
+            }
+        }
+    }
+
+    //delete member actions
+    member.onDeleteMember(model);
+    model.unregisterMember(member);
+    
+    actionResult.actionDone = true;
+    actionResult.updateModelDependencies = true;
+
+    return actionResult;
+}
+
+let ACTION_EVENT$3 = "deleted";
+
+
+//This line of code registers the action 
+addActionInfo("deleteMember",deleteMember);
+
+/** This is self installing command module. It has no exports
+ * but it must be imported to install the command. 
+ *
+ * Action Data format:
+ * {
+ *  "action": "updateFolderFunction",
+ *  "member": (member to move),
+ *  "argList": (argument list, as an array of strings)
+ *  "returnValueString": (name of the return value table)
+ *  
+ *  "eventInfo": (OUTPUT - event info for the associated delete event)
+ * }
+ */
+
+/** Update folder function action function */
+function updateProperties(model,actionData) { 
+
+    let actionResult = {};
+    actionResult.event = ACTION_EVENT$4;
+    
+    var folderFunction = model.getMutableMember(actionData.memberId);
+    if(!folderFunction) {
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "Member not found for update member code";
+        return;
+    }
+    actionResult.member = folderFunction;
+    
+    folderFunction.setArgList(actionData.argList);
+    folderFunction.setReturnValueString(actionData.returnValueString);
+    
+    actionResult.actionDone = true;
+    actionResult.recalculateMember = true;
+
+    return actionResult;
+}
+
+let ACTION_EVENT$4 = "updated";
+
+//This line of code registers the action 
+addActionInfo("updateFolderFunction",updateProperties);
+
+/** This is self installing command module. It has no exports
+ * but it must be imported to install the command. 
+ *
+ * Action Data format:
+ * {
+ *  "action": "loadModel",
+ *  
+ *  "modelJson": model json
+ *  
+ * }
+ *
+ * MEMBER CREATED EVENT: "modelUpdated"
+ * Event member format:
+ * {
+ *  "member": (member)
+ * }
+ */
+
+
+/** This method instantiates a member, without setting the update data. 
+ *@private */
+function loadModel(model,actionData) {
+
+    let actionResult = {};
+    actionResult.event = ACTION_EVENT$5;
+
+    let modelJson = actionData.modelJson;
+    
+    //check the file format
+    var fileType = modelJson.fileType;
+    if(fileType !== Model.SAVE_FILE_TYPE) {
+        throw new Error("Bad file format.");
+    }
+    if(modelJson.version !== Model.SAVE_FILE_VERSION) {
+        throw new Error("Incorrect file version. CHECK APOGEEJS.COM FOR VERSION CONVERTER.");
+    }
+
+    //set the model name
+    if(modelJson.name !== undefined) {
+        model.setName(modelJson.name);
+    }
+
+    //load the model members (root folder and its children)
+    actionResult.childActionResults = [];
+    for(let childName in modelJson.children) {
+        let childJson = modelJson.children[childName];
+        let memberActionResult = createMember(model,model,childJson);
+        actionResult.childActionResults.push(memberActionResult);
+    }
+
+    actionResult.actionDone = true;
+    
+    return actionResult;
+}
+
+let ACTION_EVENT$5 = "updated";
+
+//This line of code registers the action 
+addActionInfo("loadModel",loadModel);
+
+/** This is self installing command module. It has no exports
+ * but it must be imported to install the command. 
+ *
+ * Action Data format:
+ * {
+ *  "action": "updated",
+ *  "model": (model to update),
+ *  "properties": (properties to set) //currently only "name"
+ * }
+ *
+ * member UPDATED EVENT: "modelUpdated"
+ * Event member format:
+ * {
+ *  "member": (member)
+ * }
+ */
+
+/** Update code action function. */
+function updateModel(model,actionData) { 
+
+    let actionResult = {};
+    actionResult.event = ACTION_EVENT$6;
+    
+    var properties = actionData.properties;
+    if(properties) {
+        if(properties.name) model.setName(properties.name);
+    }
+    
+    actionResult.actionDone = true;
+
+    return actionResult;
+}
+
+let ACTION_EVENT$6 = "updated";
+
+//The following code registers the actions
+addActionInfo("updateModel",updateModel);
+
+/** This is self installing command module. It has no exports
+ * but it must be imported to install the command. 
+ * 
+ * This sets a field value on a member.
+ *
+ * Action Data format:
+ * {
+ *  "action": "setField",
+ *  "memberId": (member to update),
+ *  "fieldName": (the name of the field to update)
+ *  "fieldValue": (the new field value)
+ * }
+ */
+
+
+/** member UPDATED EVENT: "updated"
+ * Event member format:
+ * {
+ *  "member": (member)
+ * }
+ */
+
+
+/** Update code action function. */
+function setField(model,actionData) {
+
+    let actionResult = {};
+    actionResult.event = ACTION_EVENT$7;
+    
+    var member = model.getMutableMember(actionData.memberId);
+    if(!member) {
+        actionResult.actionDone = false;
+        actionResult.errorMsg = "Member not found for update member code";
+        return;
+    }
+    actionResult.member = member;
+          
+    member.setField(actionData.fieldName,actionData.fieldValue);
+        
+    actionResult.actionDone = true;
+    actionResult.recalculateMember = true;
+
+    return actionResult;
+}
+
+let ACTION_EVENT$7 = "updated";
+
+//The following code registers the actions
+addActionInfo("setField",setField);
 
 /** These functions assist in using adebugger. */
 
@@ -10773,20 +10747,26 @@ __globals__.__functionTableWrapper = function(initMember) {
     var memberFunction;
     var memberInitialized = false;
 
-    //create member function for lazy initialization
-    var wrapperMemberFunction = function(argList) {
+    var initializeIfNeeded = () => {
         if(!memberInitialized) {
             memberFunction = initMember();
             memberInitialized = true;
         }
+    };
 
+    //create member function for lazy initialization
+    var wrapperMemberFunction = function(argList) {
+        initializeIfNeeded();
         return memberFunction.apply(null,arguments);
     };
+
+    //add an function on this function to allow external initialization
+    wrapperMemberFunction.initializeIfNeeded = initializeIfNeeded;
     
     return wrapperMemberFunction;
 };
 
 exports.Messenger = Messenger;
-exports.Workspace = Workspace;
+exports.Model = Model;
 exports.doAction = doAction;
 exports.validateTableName = validateTableName;

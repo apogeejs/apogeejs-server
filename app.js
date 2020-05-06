@@ -1,3 +1,4 @@
+require("./nodeGlobals.js");
 const express = require('express');
 const {ApogeeManager} = require("./ApogeeManager");
 

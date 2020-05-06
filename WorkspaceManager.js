@@ -1,5 +1,7 @@
-var fs = require('fs');
+const fs = require('fs');
+const { ActionRunner } = require('./ActionRunner');
 const { WorkspaceHandler } = require('./WorkspaceHandler');
+const { Model } = require('./apogeeCorelib.cjs.js');
 
 //-------------------------------
 //debug
@@ -10,68 +12,73 @@ function getTimestamp() {
 }
 //-------------------------------
 
-class WorkspaceManager {
+class WorkspaceManager extends ActionRunner {
+
     /** Constructor */
-    constructor(workspaceName,workspaceInfo,settings) {      
+    constructor(workspaceName,workspaceConfig,settings) { 
+        super();
+
+        //configuration 
         this.workspaceName = workspaceName;
-        this.workspaceInfo = workspaceInfo;
+        this.workspaceConfig = workspaceConfig;
         this.settings = settings;
-        this.headlessWorkspaceJson = null;
+ 
+        //base model input
+        this.baseModel = null;
+        this.endpointInfoMap = null;
 
-        this.handlers = [];
-        this.requestQueue = [];
-
+        //status info
+        this.workspaceReady = false;
+        this.workspaceShutdown = false;
         this.workspaceError = false;
+        this.workspaceErrorMsg = "";
     }
     
     /** This method initializes the endpoints for this workspace.  */
     initEndpoints(app) {
         //create endpoints for this workspace
-        for(let endpointName in this.workspaceInfo.endpoints) {
+        for(let endpointName in this.workspaceConfig.endpoints) {
+            //add endpoints to app
             let handlerFunction = (request,response) => this._processRequest(endpointName,request,response);
             let path = "/" + this.workspaceName + "/" + endpointName;
             app.post(path,handlerFunction);
         }
 
         //load the workspace json
-        fs.readFile(this.workspaceInfo.source, (err,workspaceText) => this._onWorkspaceRead(err,workspaceText));  //load from source  
-    }
-
-    /** This method is called when a handler changes to READY, ERROR or SHUTDOWN. Ity does not need to be called
-     * if the status goes to NOT_READY or BUSY. This is used to update our handler list and process our
-     * queued actions. This is done asynchronously. */
-    onHandlerStatus(handler) {
-        let handlerAction;
-
-        switch(handler.getStatus()) {
-            case WorkspaceHandler.STATUS_READY:
-                handlerAction = () => this._handlerReady(handler);
-                break;
-
-            case WorkspaceHandler.STATUS_ERROR:
-                handlerAction = () => this._handlerError(handler);
-                break;
-
-            case WorkspaceHandler.STATUS_SHUTDOWN:
-                handlerAction = () => this._handlerShutdown(handler);
-                break;
-
-            default:
-                //no op for other statuses
-                break;
-        }
-
-        //Do our handler action asynchronously
-        if(handlerAction) {
-            setTimeout(handlerAction,0);
-        }
-
+        fs.readFile(this.workspaceConfig.source, (err,workspaceText) => this._onWorkspaceRead(err,workspaceText));  //load from source  
     }
     
     shutdown() {
         //nothing for now...
-        
+        this.workspaceReady = false;
+        this.workspaceShutdown = true;
     }
+
+    //---------------------------------
+    //implementations for action runner
+    //---------------------------------
+
+    /** This function will be called when the action and any subsequent asynchronous actions complete. */
+    onActionCompleted() {
+        try {
+            //save the base model
+            this.baseModel = this.getModel();
+
+            //initialize the endpoint info
+            this._populateEndpointInfo();
+
+            //set workspace readh
+            this.workspaceReady = true;
+        }
+        catch(error) {
+            _handleSetupError(error.message);
+        }
+    }
+
+    /** This funtion will be called if there is an error running the action. */
+    onActionError(msg) {
+        this._handleSetupError(msg);
+    };
     
     //====================================
     // Private Methods
@@ -82,39 +89,46 @@ class WorkspaceManager {
         //just print an error message
         console.log(errorMsg);
         this.workspaceError = true;
+        this.workspaceErrorMsg = errorMsg;
     }
 
     /** This method should be called to process a request. */
     _processRequest(endpointName,request,response) {
 
-        let requestInfo = {};
-        requestInfo.endpointName = endpointName;
-        requestInfo.request = request;
-        requestInfo.response = response;
-        requestInfo.debugId = DEBUG_NEXT_REQUEST_ID++;
-
-        if(this.workspaceError) {
-            response.status(500).send("Workspace endpoints unavailable: " + this.workspaceName);
+        if(!this.workspaceReady) {
+            this._doWorkspaceNotReadyResponse(response);
             return;
         }
-        
-        let handler = this._getAvailableHandler();
-        if(handler) {
-console.log("DEBUG: " + getTimestamp() + ": Request with handler ready. Request=" + requestInfo.debugId + "; Handler=" + handler.debugId);
-            //if there is a handler available use it
-            handler.handleRequest(requestInfo);
+
+        try {
+            let endpointInfo = this.endpointInfoMap[endpointName];
+            if(!endpointInfo) {
+                throw new Error("Endpoint not found: " + endpointName + "for workspace " + this.workspaceName);
+            }
+
+            let workspaceHandler = new WorkspaceHandler(this.baseModel,this.settings);
+            workspaceHandler.handleRequest(request,response,endpointInfo);
+        }
+        catch(error) {
+            response.status(500).send("Unknown error processing request: " + error.message);
+        }
+    }
+
+    /** This method will issue a response if the workspace is not ready to handle a request, for whatever reason. */
+    _doWorkspaceNotReadyResponse(response) {
+        let msg;
+        if(this.workspaceError) {
+            msg = "Workspace endpoints not available: " + this.workspaceName + " Error loading workspace: " + this.workspaceErrorMsg;
+        }
+        else if(this.workspaceShutdown) {
+            msg = "The workspace has already been shutdown: " + this.workspaceName;
         }
         else {
-console.log("DEBUG: " + getTimestamp() + ": Request queued. Request=" + requestInfo.debugId);
-
-            //otherwise queue this request
-            this._queueRequest(requestInfo);
-
-            //make a new handler if we need to
-            this._createNewHandlerIfNeeded();
+            msg = "The workspace is being initialized: " + this.workspaceName;
         }
-
+        response.status(500).send(msg);
     }
+
 
     /** This stores the workspace json given the workspace file text. */
     _onWorkspaceRead(err,workspaceText) {
@@ -123,124 +137,86 @@ console.log("DEBUG: " + getTimestamp() + ": Request queued. Request=" + requestI
             return;
         }
         else {
-            var workspace = JSON.parse(workspaceText);
+            try {
+                let modelJson = this._getModelJson(workspaceText);
+                
+                if(modelJson.version != WorkspaceManager.SUPPORTED_WORKSPACE_VERSION) {   
+                    this._handleSetupError("Improper workspace version. Required: " + WorkspaceManager.SUPPORTED_WORKSPACE_VERSION + ", Found: " + this.headlessWorkspaceJson.version);
+                }
+                else {
+                    //create and load the base model
+                    let model = new Model(this.getModelRunContext());
+                    this.setModel(model);
 
-            if(workspace.fileType == "apogee app js workspace") {
-                this.headlessWorkspaceJson = workspace.workspace;
+                    let loadAction = {};
+                    loadAction.action = "loadModel";
+                    loadAction.modelJson = modelJson;
+                    //run the load action with invalidOK and the error msg prefix
+                    this.runActionOnModel(loadAction,true,"Error loading base model: ");
+                }
             }
-            else if(workspace.fileType == "apogee workspace") {
-                this.headlessWorkspaceJson = workspace;
-            }
-            else {
-                this.setStatusError("Improper workspace format");
-                return;
-            }
-
-            if(this.headlessWorkspaceJson.version != WorkspaceManager.SUPPORTED_WORKSPACE_VERSION) {   
-                this._handleSetupError("Improper workspace version. Required: " + WorkspaceManager.SUPPORTED_WORKSPACE_VERSION + ", Found: " + this.headlessWorkspaceJson.version);
-            }
-            else {
-                console.log("Apogee Workspace Ready: " + this.workspaceName);
-
-                //see if we need to instantiate any handlers
-                this._createNewHandlerIfNeeded();
-            }
-        }
-    }
-
-    //----------------------------------------
-    // Request Queue and Handler Cache Methods
-    //----------------------------------------
-
-    _getAvailableHandler() {
-        let availableHandler = this.handlers.find(handler => (handler.getStatus() == WorkspaceHandler.STATUS_READY));
-        return availableHandler;
-    }
-
-    _queueRequest(requestInfo) {
-        //queue the request
-        this.requestQueue.push(requestInfo);
-    }
-
-    /** This method will instantiate a new handler if one is needed. */
-    _createNewHandlerIfNeeded() {
-console.log("DEBUG: " + getTimestamp() + ": Create handler check. ");
-        //no creation if there is a workspace error
-        if(this.workspaceError) return;
-
-        let totalNumHandlers = this.handlers.length;
-
-        //get the number of handlers that are waiting to be ready
-        let numPendingHandlers = this.handlers.reduce( (count,handler) => {
-            return (handler.getStatus() == WorkspaceHandler.STATUS_NOT_READY) ? count+1 : count;
-        },0);
-
-        if(this.settings.createHandlersOnDemand) {
-            //do not cache handlers
-            //make handlers when requests come in
-            //keep the number of handlers equal to the number of requests waiting for a handler
-            if(numPendingHandlers < requestQueue.length) {
-                this._instantiateNewHandler();
-            }
-        }
-        else if(totalNumHandlers < this.settings.minHandlerCount) {
-            //cache handlers
-            //make a new handler if we are below the minimum
-            this._instantiateNewHandler();
-        }
-        else if(totalNumHandlers < this.settings.maxHandlerCount) {
-            //cache handlers
-            //make a new one if we are below the max and we have more waiting requests than pending handlers
-
-            //make a new handler if we are not at the maximum handler number and there are fewer handlers
-            //pending than there are queued requests
-            if(numPendingHandlers < this.requestQueue.length) {
-                this._instantiateNewHandler();
+            catch(error) {
+                this._handleSetupError("Error loading workspace: " + error.message);
             }
         }
     }
 
-    /** This makes a new handler. */
-    _instantiateNewHandler() {
-        let handler = new WorkspaceHandler(this,this.workspaceInfo,this.settings);
-
-        this.handlers.push(handler);
-        handler.init(this.headlessWorkspaceJson);
-
-        //see if we need to make any more handlers, but wait to do it
-        setTimeout(() => this._createNewHandlerIfNeeded(),this.settings.handlerSuccessiveCreateDelay);
-    }
-
-    /** When this method is called we check if a queued request needs a handler. */
-    _handlerReady(handler) {
-        if(this.requestQueue.length > 0) {
-            let requestInfo = this.requestQueue.shift();
-console.log("DEBUG: " + getTimestamp() + ": Handler ready for queued request. Request=" + requestInfo.debugId + "; Handler=" + handler.debugId);
-            handler.handleRequest(requestInfo);
+    /** This loads the model json from the input text. */
+    _getModelJson(inputText) {
+        let inputJson = JSON.parse(inputText);
+        if(inputJson.fileType == "apogee app js workspace") {
+            return inputJson.code.model;
+        }
+        else if(inputJson.fileType == "apogee model") {
+            return inputJson;
+        }
+        else {
+            throw new Error("Improper workspace format");
         }
     }
+
     
-    /** When this method is called we will kill this handler. */
-    _handlerError(handler) {
-        this._removeHandler(handler);
-        handler.shutdown();
-    }
-    
-    /** When we get this request we need to make sure we don't trying to use this handler. */
-    _handlerShutdown(handler) {
-        this._removeHandler(handler);
+    /** This populates the endpoint information needed by the endpoint handlers */
+    _populateEndpointInfo() {
+        //populate the endpoint information
+        this.endpointInfoMap = {};
+        for(let endpointName in this.workspaceConfig.endpoints) {
+            //create the endpoint info
+            let endpointConfig = this.workspaceConfig.endpoints[endpointName];
+            let endpointInfo = {};
+
+            //get the input member ids, if applicable
+            endpointInfo.inputIds = {};
+            this._loadMemberIds(endpointConfig.inputs,endpointInfo.inputIds);
+
+            //get the return value member id, if applicable
+            if(endpointConfig.output) {
+                endpointInfo.outputId = this._getMemberId(endpointConfig.output);
+            }
+
+            this.endpointInfoMap[endpointName] = endpointInfo;
+        }
     }
 
-    /** This method removes a handler from the handler list. */
-    _removeHandler(handlerToRemove) {
-console.log("DEBUG: " + getTimestamp() + ": Remove handler: " + handlerToRemove.debugId);
-
-        //update the handler list, with this removed
-        this.handlers = this.handlers.filter( listHandler => (handlerToRemove !== listHandler));
-
-        //check if we need to make a new handler
-        this._createNewHandlerIfNeeded();
+    /** This populates the member ids in the targetIdMap given the member names 
+     * in the sourceNameMap.*/
+    _loadMemberIds(sourceNameMap,targetIdMap) {
+        for(let inputName in sourceNameMap) {
+            let memberFullName = sourceNameMap[inputName];
+            let memberId = this._getMemberId(memberFullName);
+            targetIdMap[inputName] = memberId;
+        }
     }
+
+    /** This gets the member id for the given member full name. */
+    _getMemberId(memberFullName) {
+        let member = this.baseModel.getMemberByFullName(this.baseModel,memberFullName);
+        if(!member) {
+            throw new Error("Endpoint field not found: " + memberFullName);
+        }
+        return member.getId();
+    }
+
 }
 
 //this is the supported version of the workspace.
