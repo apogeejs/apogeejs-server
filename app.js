@@ -1,5 +1,6 @@
 require("./nodeGlobals.js");
 const express = require('express');
+const bodyParser = require('body-parser');
 const {ApogeeManager} = require("./ApogeeManager");
 
 const FILE_ROOT = "/file";
@@ -20,7 +21,8 @@ app.use(FILE_ROOT,express.static("file"));
 //---------------
 
 //parse json body of requests
-app.use(express.json()) // for parsing application/json
+app.use(bodyParser.json()) // for parsing application/json
+app.use(bodyParser.text()); //for parsing plain.text
 
 app.use(function(req, res, next) {
     res.header("Access-Control-Allow-Origin", "*"); // update to match the domain you will make the request from
