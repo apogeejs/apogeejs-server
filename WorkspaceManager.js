@@ -229,7 +229,7 @@ class WorkspaceManager extends ActionRunner {
 }
 
 //this is the supported version of the workspace.
-WorkspaceManager.SUPPORTED_WORKSPACE_VERSION = .2;
+WorkspaceManager.SUPPORTED_WORKSPACE_VERSION = .3;
 
 module.exports.WorkspaceManager = WorkspaceManager;
 

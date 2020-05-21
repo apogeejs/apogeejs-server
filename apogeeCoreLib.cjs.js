@@ -90,6 +90,12 @@ EventManager.callHandler = function(handlerName, handlerData) {
     }
 };
 
+/** This resets all the listeners and handlers */
+EventManager.clearListenersAndHandlers = function() {
+    this.listenerTable = {};
+    this.handlerTable = {};
+};
+
 /** This is a class for the field object formalism. It is used to store fields
  * and track modifications. It allows you to lock the object so that no more changes
  * can be made. */
@@ -103,10 +109,19 @@ class FieldObject {
      * can be changed with the "keepUpdatedFixed" flag The new instance will be unlocked.
      * - keepUpdatedFixed - This should only be used when an instance is copied. If this is true
      * the copied instance will keep the same fields updated flags. Otherwise they will be cleared.
+     * - specialCaseIdValue - This can be set if you wnt to create a new instance with a specific ID value. 
+     * This should be done only in special circumstances. One example is "redo" creation of an object (after an undo)
+     * subsequent commands for this object will reference its original ID. This is a way to set the ID of the recreaeted
+     * object to match the original.
      */
-    constructor(objectType,instanceToCopy,keepUpdatedFixed) {
+    constructor(objectType,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
         if(!instanceToCopy) {
-            this.id = _createId(objectType);
+            if(specialCaseIdValue) {
+                this.id = specialCaseIdValue;
+            }
+            else {
+                this.id = _createId(objectType);
+            }
             this.objectType = objectType;
         }
         else {
@@ -540,12 +555,12 @@ Parent.removeChild = function(model,child) {
 
 ///** This method is called when the model is closed. 
 //* It should do any needed cleanup for the object. */
-Parent.onClose = function() {
+Parent.onClose = function(model) {
     let childIdMap = this.getField("childIdMap");
     for(var key in childIdMap) {
         var childId = childIdMap[key];
         let child = model.lookupMemberById(childId);
-        if((child)(child.onClose)) child.onClose();
+        if((child)&&(child.onClose)) child.onClose(model);
     }
 
     if(this.onCloseAddition) {
@@ -741,7 +756,8 @@ class Model extends FieldObject {
      * current when this new action is run. An example of when this is used is to populate a data table in
      * response to a json request completing.  */
     doFutureAction(actionData) {
-        this.runContext.doFutureAction(this.getId(),actionData);
+        //run this action asynchronously
+        this.runContext.doAsynchActionCommand(this.getId(),actionData);
     }
 
     /** This method returns the root object - implemented from RootHolder.  */
@@ -1120,17 +1136,17 @@ Model.ROOT_FOLDER_NAME = "Main";
 Model.SAVE_FILE_TYPE = "apogee model";
 
 /** This is the supported file version. */
-Model.SAVE_FILE_VERSION = 0.2;
+Model.SAVE_FILE_VERSION = 0.3;
 
 Model.CONSECUTIVE_ACTION_INITIAL_LIMIT = 500;
 
 Model.EMPTY_MODEL_JSON = {
-    "fileType": "apogee model",
-    "version": 0.2,
+    "fileType": Model.SAVE_FILE_TYPE,
+    "version": Model.SAVE_FILE_VERSION,
     "name": Model.DEFAULT_MODEL_NAME,
     "children": {
         "Main": {
-            "name": "Main",
+            "name": Model.ROOT_FOLDER_NAME,
             "type": "apogee.Folder"
         }
     }
@@ -1302,8 +1318,8 @@ function doAction(model,actionData) {
     
     //trigger any pending actions
     //these will be done asynchronously
-    var savedMessengerAction = model.getSavedMessengerAction();
-    if(savedMessengerAction) {
+    var savedMessengerAction;
+    while(savedMessengerAction = model.getSavedMessengerAction()) {
         var runQueuedAction = true;
 
         if(model.checkConsecutiveQueuedActionLimitExceeded()) {
@@ -1336,9 +1352,8 @@ function doAction(model,actionData) {
             }
         }
     }
-    else {
-        model.clearConsecutiveQueuedTracking();
-    } 
+    
+    model.clearConsecutiveQueuedTracking(); 
     
     //fire the events
     let changeList = changeMapToChangeList(model.getChangeMap());
@@ -7937,6 +7952,7 @@ function validateTableName(name) {
         //check the pattern
         var nameResult = NAME_PATTERN.exec(name);
         if((!nameResult)||(nameResult[0] !== name)) {
+            if(!nameResult) nameResult = {};
             nameResult.errorMessage = "Illegal name format: " + name;
             nameResult.valid = false;
         }
@@ -8028,7 +8044,7 @@ function createGeneratorFunction(varInfo, combinedFunctionBody) {
 
     //add the messenger as a local variable
     contextDeclarationText += "var apogeeMessenger\n";
-    initializerBody += "apogeeMessenger = messenger\n";
+    initializerBody += "apogeeMessenger = __messenger\n";
     
     //set the context - here we only defined the variables that are actually used.
 	for(var baseName in varInfo) {        
@@ -8041,7 +8057,7 @@ function createGeneratorFunction(varInfo, combinedFunctionBody) {
         contextDeclarationText += "var " + baseName + ";\n";
         
         //add to the context setter
-        initializerBody += baseName + ' = contextManager.getValue(model,"' + baseName + '");\n';
+        initializerBody += baseName + ' = __contextManager.getValue(__model,"' + baseName + '");\n';
     }
     
     //create the generator for the object function
@@ -8101,7 +8117,7 @@ const GENERATOR_FUNCTION_FORMAT_TEXT = [
 "//declare context variables",
 "{0}",
 "//context setter",
-"function __initializer(model,contextManager,messenger) {",
+"function __initializer(__model,__contextManager,__messenger) {",
 "{1}};",
 "",
 "//user code",
@@ -8146,7 +8162,13 @@ class Messenger {
         actionData.data = data;
         
         //return is handled above asynchronously
-        doAction(this.model,actionData);
+        if(this.model.getIsLocked()) {
+            //the messenger would work improperly here
+            throw new Error("Error: Messenger must only be called during member formula calculation.");
+        }
+        else {
+            doAction(this.model,actionData);
+        }
     }
 
     /** This is similar to dataUpdate except is allows multiple values to be set.
@@ -8179,7 +8201,13 @@ class Messenger {
         actionData.actions = actionList;
         
         //return is handled above asynchronously
-        doAction(this.model,actionData);
+        if(this.model.getIsLocked()) {
+            //the messenger would work improperly here
+            throw new Error("Error: Messenger must only be called during member formula calculation.");
+        }
+        else {
+            doAction(this.model,actionData);
+        }
     }
     
     //=====================
@@ -8256,8 +8284,8 @@ function getDependencyInfo(varInfo,model,contextManager) {
  * the hierarchy (maybe the model). */
 class Member extends FieldObject {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
-        super("member",instanceToCopy,keepUpdatedFixed);
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super("member",instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
         
         //==============
         //Fields
@@ -8676,8 +8704,8 @@ let UNKNOWN_ERROR_MSG_PREFIX = "Unknown error in member ";
 class DependentMember extends Member {
 
     /** This initializes the component */
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed);
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
 
         //==============
         //Fields
@@ -8750,7 +8778,6 @@ class DependentMember extends Member {
         for(var idString in dependsOnMap) {
             let dependsOnType = dependsOnMap[idString];
             let impactor = model.lookupMemberById(idString);
-
             if((impactor.isDependent)&&(impactor.getCalcPending())) {
                 impactor.calculate(model);
             }
@@ -8804,19 +8831,19 @@ class DependentMember extends Member {
         for(var idString in newDependsOnMap) {
             if(newDependsOnMap[idString] != oldDependsOnMap[idString]) {
                 dependenciesUpdated = true;
-                if(newDependsOnMap[idString] == apogeeutil.NORMAL_DEPENDENCY) model.addToImpactsList(this.getId(),idString);
+                if(!oldDependsOnMap[idString]) model.addToImpactsList(this.getId(),idString);
             }
         }
         for(var idString in oldDependsOnMap) {
             if(newDependsOnMap[idString] != oldDependsOnMap[idString]) {
                 dependenciesUpdated = true;
-                if(!oldDependsOnMap[idString] == apogeeutil.NORMAL_DEPENDENCY) model.removeFromImpactsList(this.getId(),idString);
+                if(!newDependsOnMap[idString]) model.removeFromImpactsList(this.getId(),idString);
             }
         }
 
         if(dependenciesUpdated) {
             this.setField("dependsOnMap",newDependsOnMap);
-            this.calcPending = true;
+//            this.calcPending = true;
         }
 
         return dependenciesUpdated;
@@ -8852,11 +8879,15 @@ class DependentMember extends Member {
 class CodeableMember extends DependentMember {
 
     /** This initializes the component. argList is the arguments for the object function. */
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed);
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
 
         //mixin init where needed. This is not a scoep root. Parent scope is inherited in this object
-        this.contextHolderMixinInit(false); 
+        this.contextHolderMixinInit(false);
+        
+        //this should be set to true by any extending class that supresses the messenger
+        //see the supressMessenger function for details.
+        this.doSupressMessenger = false;
         
         //==============
         //Fields
@@ -9084,6 +9115,21 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
     }
 
     //===================================
+    // Protected Functions
+    //===================================
+
+    /** This method is used to remove access to the messenger from the formula for
+     * this member. This should be done if the data from the member includes user runnable
+     * code. The messenger should only be called in creating a data result for the member.
+     * (Specifically, calling the messenger is only valid while the member is being calculated.
+     * If it is called after that it will throw an error.) One place this supression is done is
+     * in a FunctionMember.
+     */
+    supressMessenger(doSupressMessenger) {
+        this.doSupressMessenger = doSupressMessenger;
+    }
+
+    //===================================
     // Private Functions
     //===================================
 
@@ -9126,7 +9172,7 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
                 
                 //set the context
                 let compiledInfo = this.getField("compiledInfo");
-                let messenger = new Messenger(model,this);
+                let messenger = this.doSupressMessenger ? undefined : new Messenger(model,this);
                 compiledInfo.memberFunctionContextInitializer(model,this.getContextManager(),messenger);
                 
                 functionInitializedSuccess = true;
@@ -9159,8 +9205,8 @@ apogeeutil.mixin(CodeableMember,ContextHolder);
 /** This class encapsulatees a data table for a JSON object */
 class JsonTable extends CodeableMember {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed);
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
     }
 
     //------------------------------
@@ -9189,6 +9235,12 @@ class JsonTable extends CodeableMember {
         } 
     }
 
+    /** This is an optional method that, when present will allow the member data to be set if the 
+     * member function is cleared. */
+    getDefaultDataValue() {
+        return "";
+    }
+
     //------------------------------
     // Member Methods
     //------------------------------
@@ -9208,7 +9260,7 @@ class JsonTable extends CodeableMember {
     /** This method creates a member from a json. It should be implemented as a static
      * method in a non-abstract class. */ 
     static fromJson(parentId,json) {
-        let member = new JsonTable(json.name,parentId);
+        let member = new JsonTable(json.name,parentId,null,null,json.specialIdValue);
 
         //set initial data
         let initialData = json.updateData;
@@ -9253,8 +9305,8 @@ class JsonTable extends CodeableMember {
 //============================
 
 JsonTable.generator = {};
-JsonTable.generator.displayName = "Table";
-JsonTable.generator.type = "apogee.JsonTable";
+JsonTable.generator.displayName = "JSON Member";
+JsonTable.generator.type = "apogee.JsonMember";
 JsonTable.generator.createMember = JsonTable.fromJson;
 JsonTable.generator.setDataOk = true;
 JsonTable.generator.setCodeOk = true;
@@ -9265,8 +9317,12 @@ Model.addMemberGenerator(JsonTable.generator);
 /** This is a function. */
 class FunctionTable extends CodeableMember {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed);   
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
+        
+        //The messenger should not be available from the formula for this member
+        //see details in the CodeableMember function below.
+        this.supressMessenger(true);
     }
 
     //------------------------------
@@ -9369,7 +9425,7 @@ class FunctionTable extends CodeableMember {
     /** This method creates a member from a json. It should be implemented as a static
      * method in a non-abstract class. */ 
     static fromJson(parentId,json) {
-        let member = new FunctionTable(json.name,parentId);
+        let member = new FunctionTable(json.name,parentId,null,null,json.specialIdValue);
 
         //set initial data
         let initialData = json.updateData;
@@ -9415,7 +9471,7 @@ class FunctionTable extends CodeableMember {
 
 FunctionTable.generator = {};
 FunctionTable.generator.displayName = "Function";
-FunctionTable.generator.type = "apogee.FunctionTable";
+FunctionTable.generator.type = "apogee.FunctionMember";
 FunctionTable.generator.createMember = FunctionTable.fromJson;
 FunctionTable.generator.readProperties = FunctionTable.readProperties;
 FunctionTable.generator.getPropertyUpdateAction = FunctionTable.getPropertyUpdateAction;
@@ -9428,8 +9484,8 @@ Model.addMemberGenerator(FunctionTable.generator);
 /** This is a folder. */
 class Folder extends DependentMember {
 
-    constructor(name,parent,instanceToCopy,keepUpdatedFixed) {
-        super(name,parent,instanceToCopy,keepUpdatedFixed);
+    constructor(name,parent,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,parent,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
 
         //mixin init where needed
         //This is not a root. Scope is inherited from the parent.
@@ -9542,7 +9598,7 @@ class Folder extends DependentMember {
     /** This method creates a member from a json. It should be implemented as a static
      * method in a non-abstract class. */ 
     static fromJson(parentId,json) {
-        var folder = new Folder(json.name,parentId);
+        var folder = new Folder(json.name,parentId,null,null,json.specialIdValue);
 
         if(json.childrenNotWriteable) {
             folder.setChildrenWriteable(false);
@@ -9625,8 +9681,8 @@ Model.addMemberGenerator(Folder.generator);
  * that is expanded into data objects. */
 class FolderFunction extends DependentMember {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed);
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
 
         //mixin init where needed
         this.contextHolderMixinInit();
@@ -9647,7 +9703,7 @@ class FolderFunction extends DependentMember {
 
         //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
         this.temporaryVirtualModelRunContext = {
-            doFutureAction: function(modelId,actionData) {
+            doAsynchActionCommand: function(modelId,actionData) {
                 let msg = "NOT IPLEMENTED: Asynchronous actions in folder function!";
                 alert(msg);
                 throw new Error(msg);
@@ -9678,7 +9734,7 @@ class FolderFunction extends DependentMember {
     /** This method creates a member from a json. It should be implemented as a static
      * method in a non-abstract class. */ 
     static fromJson(parentId,json) {
-        let member = new FolderFunction(json.name,parentId);
+        let member = new FolderFunction(json.name,parentId,null,null,json.specialIdValue);
 
         //set initial data
         let initialData = json.updateData;
@@ -10012,8 +10068,8 @@ Model.addMemberGenerator(FolderFunction.generator);
  * is intended to be used as a placeholder when a table generator is not found. */
 class ErrorTable extends Member {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed);
+    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
 
         var dummyData = "";
         this.setData(dummyData);
@@ -10044,7 +10100,7 @@ class ErrorTable extends Member {
      * method in a non-abstract class. */ 
     static fromJson(parentId,json) {
         //note - we send in the complete JSON so we can return is on saving
-        let member = new ErrorTable(json.name,parentId);
+        let member = new ErrorTable(json.name,parentId,null,null,json.specialIdValue);
 
         //set the initial data
         member.setField("completeJson",json);
@@ -10075,8 +10131,8 @@ class ErrorTable extends Member {
 //============================
 
 ErrorTable.generator = {};
-ErrorTable.generator.displayName = "Table";
-ErrorTable.generator.type = "apogee.ErrorTable";
+ErrorTable.generator.displayName = "Error Member";
+ErrorTable.generator.type = "apogee.ErrorMember";
 ErrorTable.generator.createMember = ErrorTable.fromJson;
 ErrorTable.generator.setDataOk = false;
 
@@ -10096,6 +10152,7 @@ Model.addMemberGenerator(ErrorTable.generator);
  *      - name
  *      - unique table type name
  *      - additional table specific data
+ *      - specialIdValue (this is only to be used in special cases, to set the ID of the created object)
  *  
  * }
  *
@@ -10150,6 +10207,26 @@ function createMember(model,parent,memberJson) {
     if(generator) {
         member = generator.createMember(parent.getId(),memberJson); 
 
+        //this codde attempts to write  the member ID into the command that created the member.
+        //We want this in our stored commands so we can use it for "redo" and have a member created
+        //with the same ID. That way subsequent redo commands will correctly access the replacement member.
+        //This doesn't seem like an optimal way to add this info to the input command. 
+        //However, for now this is the earliest peice of code that actually touches each create action.
+        //An alternative is to place a predetermined ID in the command before it is executed, in the 
+        //command code. However, I didn't do that for now because there is not a one-to-one map from 
+        //commands to actions. A single command often creates a hierarchy of members, all of which we 
+        //would want to "modify". 
+        try {
+            if(!memberJson.specialIdValue) {
+                memberJson.specialIdValue = member.getId();
+            }
+        }
+        catch(error) {
+            //we couldn't write into the command. It may be immutable
+            //downstream redo commands won't work, but we'll cleanly handle that case then
+            //with a failed redo.
+        }
+
         //pass this child to the parent
         parent.addChild(model,member);
 
@@ -10177,7 +10254,7 @@ function createMember(model,parent,memberJson) {
     }
     else {
         //type not found! - create a dummy object and add an error to it
-        let errorTableGenerator = Model.getMemberGenerator("appogee.ErrorTable");
+        let errorTableGenerator = Model.getMemberGenerator("apogee.ErrorMember");
         member = errorTableGenerator.createMember(parent,memberJson);
         member.setError("Member type not found: " + memberJson.type);
         
@@ -10240,14 +10317,14 @@ function updateCode(model,actionData) {
     if(!member) {
         actionResult.actionDone = false;
         actionResult.errorMsg = "Member not found for update member code";
-        return;
+        return actionResult;
     }
     actionResult.member = member;
 
     if((!member.isCodeable)||(!member.getSetCodeOk())) {
         actionResult.actionDone = false;
         actionResult.errorMsg = "can not set code on member: " + member.getFullName(model);
-        return;
+        return actionResult;
     }
           
     member.applyCode(actionData.argList,
@@ -10271,14 +10348,14 @@ function updateData(model,actionData) {
     if(!member) {
         actionResult.actionDone = false;
         actionResult.errorMsg = "Member not found for update member data";
-        return;
+        return actionResult;
     }
     actionResult.member = member;
     
     if(!member.getSetDataOk()) {
         actionResult.actionDone = false;
         actionResult.errorMsg = "Can not set data on member: " + member.getFullName(model);
-        return;
+        return actionResult;
     }
         
     var data = actionData.data;
@@ -10730,7 +10807,7 @@ addActionInfo("setField",setField);
 
 /** The function is called when a member function is called. It
  * is intended for debug purposes, to add a breakpoint. */
-__globals__.__memberFunctionDebugHook = function(memberFullName) {
+__globals__.__memberFunctionDebugHook = function(memberName) {
 };
 
 /** This function is called from the constructor code for a custom control.
