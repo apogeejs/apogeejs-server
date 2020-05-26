@@ -1130,7 +1130,7 @@ apogeeutil.mixin(Model,Parent);
 let memberGenerators = {};
 
 Model.DEFAULT_MODEL_NAME = "Workspace";
-Model.ROOT_FOLDER_NAME = "Main";
+Model.ROOT_FOLDER_NAME = "main";
 
 /** This is the supported file type. */
 Model.SAVE_FILE_TYPE = "apogee model";
@@ -1145,7 +1145,7 @@ Model.EMPTY_MODEL_JSON = {
     "version": Model.SAVE_FILE_VERSION,
     "name": Model.DEFAULT_MODEL_NAME,
     "children": {
-        "Main": {
+        "main": {
             "name": Model.ROOT_FOLDER_NAME,
             "type": "apogee.Folder"
         }
@@ -8332,9 +8332,13 @@ class Member extends FieldObject {
         }
         else {
             let parent = this.getParent(model);
-            if(parent) {
+            if((parent)&&(parent.isMember)) {
                 return parent.isFullNameUpdated(model); 
             } 
+            else {
+                //if the parent is the model, we don't need to check the full name 
+                return false;
+            }
         }
     }
 
@@ -10802,46 +10806,6 @@ let ACTION_EVENT$7 = "updated";
 
 //The following code registers the actions
 addActionInfo("setField",setField);
-
-/** These functions assist in using adebugger. */
-
-/** The function is called when a member function is called. It
- * is intended for debug purposes, to add a breakpoint. */
-__globals__.__memberFunctionDebugHook = function(memberName) {
-};
-
-/** This function is called from the constructor code for a custom control.
- * It is intended to allow adding a breakpoint before entering user code.
- * To use this, the constuctor must be set. */
-__globals__.__customControlDebugHook = function(args) {
-};
-
-/** This is a wrapper used in function table creation to help make 
- * debugging more readable, rather than placing this code in the section that
- * is obfuscated. */
-__globals__.__functionTableWrapper = function(initMember) {
-
-    var memberFunction;
-    var memberInitialized = false;
-
-    var initializeIfNeeded = () => {
-        if(!memberInitialized) {
-            memberFunction = initMember();
-            memberInitialized = true;
-        }
-    };
-
-    //create member function for lazy initialization
-    var wrapperMemberFunction = function(argList) {
-        initializeIfNeeded();
-        return memberFunction.apply(null,arguments);
-    };
-
-    //add an function on this function to allow external initialization
-    wrapperMemberFunction.initializeIfNeeded = initializeIfNeeded;
-    
-    return wrapperMemberFunction;
-};
 
 exports.Messenger = Messenger;
 exports.Model = Model;
