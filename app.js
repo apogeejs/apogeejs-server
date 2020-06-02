@@ -59,14 +59,8 @@ initPromise.then(startListener).catch(errorHandler);
 //============================
 
 function getPort() {
-    if(process.argv.length === 3) {
-        var portString = process.argv[2];
-        try {
-            return parseInt(portString);
-        }  
-        catch(error) {
-            console.error("Errror reading port: " + error.message);
-        }
+    if(process.env.npm_package_config_port) {
+        return process.env.npm_package_config_port;
     }
 
     //default port

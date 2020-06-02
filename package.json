@@ -1,8 +1,12 @@
 {
-  "name": "hax-server",
-  "version": "0.2.0",
+  "name": "apogeejs-server",
+  "version": "0.3.0",
   "description": "Apogee server",
+  "homepage": "https://apogeejs.com",
+  "license": "MIT",
   "main": "app.js",
+  "config": {"port":"3456"},
+  "scripts": {"start": "node app.js"},
   "dependencies": {
     "express": "~4.17.1",
     "esprima": "~2.7.2",
@@ -11,6 +15,6 @@
   "author": "Dave Sutter",
   "repository": {
     "type": "git",
-    "url": "http://github.com/sutter-dave/haxserver.git"
+    "url": "https://github.com/sutter-dave/ApogeeServer.git"
   }
 }

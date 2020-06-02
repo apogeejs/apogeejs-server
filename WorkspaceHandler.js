@@ -21,7 +21,7 @@ class WorkspaceHandler extends ActionRunner {
 
 //this is for debug
 this.debugId = DEBUG_NEXT_HANDLER_ID++;
-console.log("DEBUG: " + getTimestamp() + ": Create new handler. " + this.debugId);
+//console.log("DEBUG: " + getTimestamp() + ": Create new handler. " + this.debugId);
 
         //configuration and settings
         this.settings = settings;
