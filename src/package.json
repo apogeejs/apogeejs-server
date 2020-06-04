@@ -1,12 +1,16 @@
 {
   "name": "apogeejs-server",
-  "version": "0.3.0",
+  "version": "1.0.0-p1",
   "description": "Apogee server",
   "homepage": "https://apogeejs.com",
   "license": "MIT",
   "main": "app.js",
-  "config": {"port":"3456"},
-  "scripts": {"start": "node app.js"},
+  "config": {
+    "port": "3456"
+  },
+  "scripts": {
+    "start": "node app.js"
+  },
   "dependencies": {
     "express": "~4.17.1",
     "esprima": "~2.7.2",

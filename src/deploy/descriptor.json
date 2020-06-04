@@ -1,0 +1,60 @@
+{
+	"workspaces": {
+		"simple": {
+			"source": "deploy/simpleWorkspace.json",
+			"endpoints": {
+				"processNumber": {
+					"inputs": {
+						"body": "Main.inputBody",
+						"queryParams": "Main.inputParams"
+					},
+					"output": "Main.outputNumber"
+				},
+				"processKey": {
+					"inputs": {
+						"queryParams": "Main.inputParams"
+					},
+					"output": "Main.outputNumber"
+				},
+				"getMax": {
+					"output": "Main.MAX_RETURN_VALUE"
+				},
+				"noOp": {
+					"inputs": {
+						"body": "Main.inputBody",
+						"queryParams": "Main.inputParams"
+					}
+				},
+				"getDefault2": {
+					"inputs": {
+					},
+					"output": "Main.outputNumber"
+				}
+			}
+		},
+		"delay": {
+			"source": "deploy/delayWorkspace.json",
+			"endpoints": {
+				"processNumber": {
+					"inputs": {
+						"body": "Main.inputBody",
+						"queryParams": "Main.inputParams"
+					},
+					"output": "Main.outputNumber"
+				}
+			}
+		},
+		"reflect": {
+			"source": "deploy/reflectWorkspace.json",
+			"endpoints": {
+				"basic": {
+					"inputs": {
+						"body": "Main.input"
+					},
+					"output": "Main.output"
+
+				}
+			}
+		}
+	}
+}

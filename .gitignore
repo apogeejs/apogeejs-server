@@ -1,3 +1,2 @@
-/node_modules/
-/deploy/
-/.npmignore/
+node_modules/
+releases-dev/
