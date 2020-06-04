@@ -1,5 +1,5 @@
-const {doAction} = require('./apogeeCorelib.cjs.js');
-const apogeeutil = require('./apogeeUtilLib.cjs.js');
+const {apogeeutil,apogee} = require('./apogeeCoreBundle.cjs.js');
+const doAction = apogee.doAction;
 
 /** This is a base class that executes a synchronous or asynchronous action on a model. */
 class ActionRunner {

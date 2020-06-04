@@ -59,8 +59,9 @@ initPromise.then(startListener).catch(errorHandler);
 //============================
 
 function getPort() {
-    if(process.env.npm_package_config_port) {
-        return process.env.npm_package_config_port;
+    var packageJson = require('./package.json');
+    if((packageJson.config)&&(packageJson.config.port)) {
+        return packageJson.config.port;
     }
 
     //default port
