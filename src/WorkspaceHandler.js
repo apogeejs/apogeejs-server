@@ -95,7 +95,7 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
             this.response.json(resultValue);
         }
         else {
-            this.response.status(400);
+            this.response.status(200).end();
         }
     }
 

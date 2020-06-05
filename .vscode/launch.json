@@ -8,6 +8,7 @@
         {
             "type": "node",
             "request": "launch",
+            "cwd": "${workspaceFolder}/src",
             "name": "Launch Program",
             "program": "${workspaceFolder}/src/app.js",
             "args": ["3456"]

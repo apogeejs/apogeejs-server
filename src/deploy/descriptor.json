@@ -1,57 +1,51 @@
 {
 	"workspaces": {
 		"simple": {
-			"source": "deploy/simpleWorkspace.json",
+			"source": "deploy/SimpleWorkspace.json",
 			"endpoints": {
-				"processNumber": {
+				"processnumber": {
 					"inputs": {
-						"body": "Main.inputBody",
-						"queryParams": "Main.inputParams"
+						"body": "main.inputBody",
+						"queryParams": "main.inputParams"
 					},
-					"output": "Main.outputNumber"
-				},
-				"processKey": {
-					"inputs": {
-						"queryParams": "Main.inputParams"
-					},
-					"output": "Main.outputNumber"
-				},
-				"getMax": {
-					"output": "Main.MAX_RETURN_VALUE"
-				},
-				"noOp": {
-					"inputs": {
-						"body": "Main.inputBody",
-						"queryParams": "Main.inputParams"
-					}
-				},
-				"getDefault2": {
-					"inputs": {
-					},
-					"output": "Main.outputNumber"
+					"output": "main.outputNumber"
 				}
 			}
 		},
-		"delay": {
-			"source": "deploy/delayWorkspace.json",
+		"altsimple": {
+			"source": "deploy/AltSimpleWorkspace.json",
 			"endpoints": {
-				"processNumber": {
+				"processnumber": {
 					"inputs": {
-						"body": "Main.inputBody",
-						"queryParams": "Main.inputParams"
+						"body": "main.inputBody",
+						"queryParams": "main.inputParams"
 					},
-					"output": "Main.outputNumber"
+					"output": "main.outputNumber"
+				},
+				"processbodyonly": {
+					"inputs": {
+						"body": "main.inputBody"
+					},
+					"output": "main.outputNumber"
+				},
+				"maxinput": {
+					"output": "main.MAX_INPUT_VALUE"
+				},
+				"noout": {
+					"inputs": {
+						"queryParams": "main.inputParams"
+					}
 				}
 			}
 		},
 		"reflect": {
-			"source": "deploy/reflectWorkspace.json",
+			"source": "deploy/ReflectWorkspace.json",
 			"endpoints": {
 				"basic": {
 					"inputs": {
-						"body": "Main.input"
+						"body": "main.input"
 					},
-					"output": "Main.output"
+					"output": "main.output"
 
 				}
 			}
