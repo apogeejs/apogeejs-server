@@ -1,5 +1,5 @@
 // File: apogeeCoreBundle.cjs.js
-// Version: 1.0.0-p1
+// Version: 1.0.0-p2
 // Copyright (c) 2016-2020 Dave Sutter
 // License: MIT
 
@@ -28,16 +28,13 @@ apogeeutil.STATE_ERROR = "error";
 /** Invalid State - used by members */
 apogeeutil.STATE_INVALID = "invalid";
 
-/** Standard dependency */
+/** Standard dependency 
+ * @private */
 apogeeutil.NORMAL_DEPENDENCY = 1;
 
-/** Pass through dependency */
+/** Pass through dependency 
+ * @private */
 apogeeutil.PASS_THROUGH_DEPENDENCY = 2;
-
-/** This method creates a unique key for a field object target.  */
-apogeeutil.createUniqueKey = function(targetType,targetId) {
-    return targetType + targetId;
-};
 
 /** 
  * This value can be assigned to a data table to signify that data is not valid.
@@ -70,7 +67,8 @@ apogeeutil.invalidFunctionReturn = function() {
 /** This function reads any proeprty of the mixinObject and adds it
  * fo the prototypr of the destObject. This is intended to apend functions and
  * other properties to a cless directly without going through inheritance. 
- * Note this will overwrite and similarly named object in the dest class.*/
+ * Note this will overwrite and similarly named object in the dest class.
+ * @private */
 apogeeutil.mixin = function(destObject,mixinObject) {
     for(var key in mixinObject) {
         destObject.prototype[key] = mixinObject[key];
@@ -287,16 +285,6 @@ apogeeutil.getNormalizedArrayCopy = function(json) {
         copiedJson.push(apogeeutil.getNormalizedCopy(element));
     }
     return copiedJson;
-};
-
-//=============================
-// Field Update Info Methods
-//=============================
-    
-// }
-//This is a version 
-apogeeutil.isFieldUpdated = function(updateInfo,fieldName) {
-    return updateInfo[fieldName] ? true : false;
 };
 
 //=================
@@ -1976,6 +1964,13 @@ function compoundActionFunction(model,actionData) {
 //This line of code registers the action 
 addActionInfo("compoundAction",compoundActionFunction);
 
+var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+
+function createCommonjsModule(fn, module) {
+	return module = { exports: {} }, fn(module, module.exports), module.exports;
+}
+
+var esprima = createCommonjsModule(function (module, exports) {
 /*
   Copyright (c) jQuery Foundation, Inc. and Contributors, All Rights Reserved.
 
@@ -2000,28 +1995,16 @@ addActionInfo("compoundAction",compoundActionFunction);
   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-//-----------------------------------------
-// ES6 Module Conversion - Added to execute this UMD module as CommonJS and use "exports" as the export.
-// Additional code appears at the bottom of the file.
-let module$1 = {};
-module$1.exports = {};
-let exports$1 = module$1.exports;
-//------------------------------------------
-
 (function (root, factory) {
 
     // Universal Module Definition (UMD) to support AMD, CommonJS/Node.js,
     // Rhino, and plain browser loading.
 
     /* istanbul ignore next */
-    if (typeof define === 'function' && define.amd) {
-        define(['exports'], factory);
-    } else if (typeof exports$1 !== 'undefined') {
-        factory(exports$1);
-    } else {
-        factory((root.esprima = {}));
+    {
+        factory(exports);
     }
-}(undefined, function (exports) {
+}(commonjsGlobal, function (exports) {
 
     var Token,
         TokenName,
@@ -7712,11 +7695,7 @@ let exports$1 = module$1.exports;
 
 }));
 /* vim: set sw=4 ts=4 et tw=80 : */
-
-//=================================
-//Additional code to convert to ES6 module
-if(exports$1 != module$1.exports) exports$1 = module$1.exports;
-//=================================
+});
 
 /** This function parses the code and returns a table that gives the variable use
  * in the passed function. The var info table has the following content
@@ -7961,7 +7940,7 @@ function analyzeCode(functionText) {
     var returnValue = {};
     
     try {
-        var ast = exports$1.parse(functionText, { tolerant: true, loc: true });
+        var ast = esprima.parse(functionText, { tolerant: true, loc: true });
     
         //check for errors in parsing
         if((ast.errors)&&(ast.errors.length > 0)) {
