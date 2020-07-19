@@ -1,5 +1,5 @@
 // File: apogeeCoreBundle.cjs.js
-// Version: 1.0.0-p3
+// Version: 1.0.0-p4
 // Copyright (c) 2016-2020 Dave Sutter
 // License: MIT
 
@@ -220,7 +220,7 @@ apogeeutil.jsonEquals = function(json1,json2) {
  * This is intended for the purpose of comparing json objects. 
  * 
  *  @param {JSON} json1 - This is a JSON valued object 
- *  @returns {Boolean}  - Returns whether or not the objects are equal
+ *  @returns {JSON} - Returns a order-modified version of the object
  */  
 apogeeutil.getNormalizedCopy = function(json) {
     var copiedJson;
@@ -9429,6 +9429,7 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
             
                 //this is an error in the code
                 if(error.stack) {
+                    console.error("Error calculating member " + this.getFullName(model));
                     console.error(error.stack);
                 }
 
@@ -9574,7 +9575,10 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
 //add components to this class
 apogeeutil.mixin(CodeableMember,ContextHolder);
 
-/** This class encapsulatees a data table for a JSON object */
+/** This class encapsulatees a data table for a JSON object. 
+ * (This object does also support function objects as elements of the json, though
+ * objects using this, such as the JsonTableComponent, may not.)
+*/
 class JsonTable extends CodeableMember {
 
     constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
@@ -9742,7 +9746,7 @@ class FunctionTable extends CodeableMember {
         };
 
         //this is called from separate code to make debugging more readable
-        return __functionTableWrapper(initMember);
+        return __functionTableWrapper(initMember,this.getName());
     }
 
     /** Add to the base lock function - The function is lazy initialized so it can call itself without a 
