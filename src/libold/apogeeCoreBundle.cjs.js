@@ -1,5 +1,5 @@
 // File: apogeeCoreBundle.cjs.js
-// Version: 1.1.0-p0
+// Version: 1.0.0-p5
 // Copyright (c) 2016-2020 Dave Sutter
 // License: MIT
 
@@ -134,11 +134,6 @@ apogeeutil.getObjectType = function(object) {
     }
     //not found
     return "Unknown";
-};
-
-/** This returns true if the object is a string. */
-apogeeutil.isString = function(object) {
-    return (typeof object == "string");
 };
 
 /** This method creates a deep copy of an object, array or value. Note that
