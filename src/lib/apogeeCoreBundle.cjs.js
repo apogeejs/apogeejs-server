@@ -1,5 +1,5 @@
 // File: apogeeCoreBundle.cjs.js
-// Version: 1.1.0-p0
+// Version: 1.2.0-p1
 // Copyright (c) 2016-2020 Dave Sutter
 // License: MIT
 
@@ -14,7 +14,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
 let apogeeutil = {};
 
 /** None State - used by members. This indicates no state information is present. */
-apogeeutil.STATE_NORMAL = "none";
+apogeeutil.STATE_NONE = "none";
 
 /** Normal State - used by members */
 apogeeutil.STATE_NORMAL = "normal";
@@ -497,6 +497,9 @@ class FieldObject {
      * object to match the original.
      */
     constructor(objectType,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        //this is a (semi-) unique number of each instance (There is no provision for wrapping - so there could be repeats)
+        this.instanceNumber = _getInstanceNumber();
+
         if(!instanceToCopy) {
             if(specialCaseIdValue) {
                 this.id = specialCaseIdValue;
@@ -509,7 +512,6 @@ class FieldObject {
         else {
             this.id = instanceToCopy.id;
             this.objectType = instanceToCopy.objectType;
-
         }
 
         this.fieldMap = {};
@@ -639,6 +641,17 @@ function _createId(objectType) {
 /** This is used for Id generation.
  * @private */
 let nextId = 1;
+
+
+/** This is intended for debug use only. It gives a unique number for each instance created. There is no provision made
+ * for wrapping of this number, and it should be used in a way where that doesn't matter. */
+function _getInstanceNumber() {
+    return nextInstanceNumber++;
+}
+
+/** This is used for unique instance number generation.
+ * @private */
+let nextInstanceNumber = 1;
 
 /** This class manages variable scope for the user code. It is used to look up 
  * variables both to find dependencies in member code or to find the value for
@@ -935,6 +948,16 @@ Parent.removeChild = function(model,child) {
 //This method should optionally be implemented for any additional actions when a Child is removed.
 //Parent.onRemoveChild(model,child);
 
+/** This method is called when a child valud changes. */
+Parent.childDataUpdate = function(model,child) {
+    if(this.onChildDataUpdate) {
+        this.onChildDataUpdate(model,child);
+    }
+};
+
+//This method should optionally be implemented for any additional actions when a Child value is changed.
+//Parent.onChildDataUpdate(model,child);
+
 ///** This method is called when the model is closed. 
 //* It should do any needed cleanup for the object. */
 Parent.onClose = function(model) {
@@ -1073,6 +1096,10 @@ class Model extends FieldObject {
      * This ensures if we look up a mutable member from here we get a different instance from what was 
      * in our original model instance. */
     getCleanCopy(newRunContext) {
+        //make sure the stored fields are up to date
+        if(this.workingImpactsMap) this.finalizeImpactsMap();
+        if(this.workingMemberMap) this.finalizeMemberMap();
+
         let newModel = new Model(newRunContext,this);
 
         //update the member map for the new model
@@ -1085,7 +1112,7 @@ class Model extends FieldObject {
             let member = oldMemberMap[memberId];
             if((member != this)&&(!member.getIsLocked())) {
                 //create a new copy of the member and register it.
-                let newMember = new member.constructor(member.getName(),member.getParentId(),member);
+                let newMember = new member.constructor(member.getName(),member);
                 newModel.workingMemberMap[newMember.getId()] = newMember;
             }
         }
@@ -1108,6 +1135,19 @@ class Model extends FieldObject {
             //this will lock the model too
             //we maybe shouldn't be modifying the members in place, but we will do it anyway
             memberMap[id].lock();
+        }
+    }
+
+    /** This completes any lazy initialization. This must be done before the model and the members are locked. 
+     * Any member not yet initialized would be a lazy initialize function that was neever called. */
+    completeLazyInitialization() {
+        //member map includes all members and the model
+        let activeMemberMap = this._getActiveMemberMap();
+        for(let id in activeMemberMap) {
+            let member = activeMemberMap[id];
+            if(member.lazyInitializeIfNeeded) {
+                member.lazyInitializeIfNeeded();
+            }
         }
     }
 
@@ -1214,14 +1254,6 @@ class Model extends FieldObject {
         return exceedsLimit;
     }
 
-    /** This should be called wo abort any queued actions. */
-    setCalculationCanceled() {
-        //reset queued action variables
-        this.clearCommandQueue();
-        
-        alert("The tables are left in improper state because the calculation was aborted. :( ");
-    }
-
     /** This should be called when there is not a queued action. */
     clearConsecutiveQueuedTracking() {
         this.consecutiveActionCount = 0;
@@ -1270,8 +1302,8 @@ class Model extends FieldObject {
     //============================
 
     lookupMemberById(memberId) {
-        let memberMap = this._getMemberMap();
-        return memberMap[memberId];
+        let activeMemberMap = this._getActiveMemberMap();
+        return activeMemberMap[memberId];
     }
 
     /** This method returns a mutable member for the given ID. If the member is already unlocked, that member will be
@@ -1283,7 +1315,7 @@ class Model extends FieldObject {
         if(member) {
             if(member.getIsLocked()) {
                 //create a unlocked copy of the member
-                let newMember = new member.constructor(member.getName(),member.getParentId(),member);
+                let newMember = new member.constructor(member.getName(),member);
 
                 //update the saved copy of this member in the member map
                 this.registerMember(newMember);
@@ -1358,7 +1390,9 @@ class Model extends FieldObject {
         delete this.workingMemberMap[memberId];
     }
 
-    _getMemberMap() {
+    /** This should be called to get a copy of the active working map when no changes are being
+     * made to the map. If changes are being made, typically they should be done to the workingMemberMap.  */
+    _getActiveMemberMap() {
         return this.workingMemberMap ? this.workingMemberMap : this.getField("memberMap");
     }
 
@@ -1620,7 +1654,7 @@ function callRecalculateList(model,recalculateList) {
  *  actionPending: (Rather than actionDone, actionPending will be returned if doAction is called while another action is in
  *      process. This should only happen for actions being called by the messenger.)
  *  errorMsg: (An error message in the case actionDone is false.)
- *  model: (The model object which was acted on.)
+ *  model: (The model object which was acted on. This is not returned if the action was not done.)
  *  changeList: (An array of changed objects:)
  *      - event: (the change to the object: created/updated/deleted)
  *      - model: (the model, if the object was the model)
@@ -1688,12 +1722,8 @@ function doAction(model,actionData) {
     //execute the main action
     let {success, errorMsg} = internalDoAction(model,actionData);
     if(!success) {
-        model.clearCommandQueue();
-        model.lockAll();
-
         let changeResult = {};
         changeResult.actionDone = false;
-        changeResult.model = model;
         changeResult.errorMsg = errorMsg;
         return changeResult;
     }
@@ -1708,12 +1738,8 @@ function doAction(model,actionData) {
             //ask user if about continueing
             var doContinue = confirm("The calculation is taking a long time. Continue?");
             if(!doContinue) {
-                model.setCalculationCanceled();
-                model.lockAll();
-
                 let changeResult = {};
                 changeResult.actionDone = false;
-                changeResult.model = model;
                 changeResult.errorMsg = "The calculation was canceled";
                 return changeResult;         
             }
@@ -1723,12 +1749,8 @@ function doAction(model,actionData) {
             //this action is run synchronously
             let {success, errorMsg} = internalDoAction(model,savedMessengerAction);
             if(!success) {
-                model.clearCommandQueue();
-                model.lockAll();
-
                 let changeResult = {};
                 changeResult.actionDone = false;
-                changeResult.model = model;
                 changeResult.errorMsg = errorMsg;
                 return changeResult;
             }
@@ -1736,6 +1758,9 @@ function doAction(model,actionData) {
     }
     
     model.clearConsecutiveQueuedTracking(); 
+
+    //check if any lazy initialized functions have not been initialized yet
+    model.completeLazyInitialization();
     
     //fire the events
     let changeList = changeMapToChangeList(model.getChangeMap());
@@ -1801,7 +1826,7 @@ function internalDoAction(model,actionData) {
 
             //populate recalc list
             let recalculateList = createRecalculateList(model,actionModifiedMembers,additionalUpdatedMembers);
-            
+   
             //recalculate all needed objects
             callRecalculateList(model,recalculateList);
 
@@ -8628,12 +8653,12 @@ function getDependencyInfo(varInfo,model,contextManager) {
                 }
 
                 //add the pass through members to the dependency map (give precedence to normal dependencies)
-                passThroughDependencies.forEach(passThroughMember => {
-                    var memberId = passThroughMember.getId();
-                    if(dependsOnMap[memberId] == undefined) {
-                        dependsOnMap[memberId] = apogeeutil.PASS_THROUGH_DEPENDENCY;
-                    }
-                });
+                // passThroughDependencies.forEach(passThroughMember => {
+                //     var memberId = passThroughMember.getId();
+                //     if(dependsOnMap[memberId] == undefined) {
+                //         dependsOnMap[memberId] = apogeeutil.PASS_THROUGH_DEPENDENCY;
+                //     }
+                // });
             }
 		}
 	}
@@ -8657,7 +8682,7 @@ function getDependencyInfo(varInfo,model,contextManager) {
  * the hierarchy (maybe the model). */
 class Member extends FieldObject {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+    constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
         super("member",instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
         
         //==============
@@ -8666,10 +8691,9 @@ class Member extends FieldObject {
         //Initailize these if this is a new instance
         if(!instanceToCopy) {
             this.setField("name",name);
-            this.setField("parentId",parentId);
             //"data"
             //"pendingPromise"
-            //"state"
+            this.setField("state",apogeeutil.STATE_NONE);
         }
     }
 
@@ -8754,8 +8778,7 @@ class Member extends FieldObject {
         }
         
         if(this.getUpdateData) {
-            var updateData = this.getUpdateData();
-            json.updateData = updateData;
+            json.updateData = this.getUpdateData();
         }
         return json;
     }
@@ -8777,7 +8800,7 @@ class Member extends FieldObject {
         }
         else {
             //If this happens, we will just make it state normal 
-            return apogeeutil.STATE_NORMAL;
+            throw new Error("INVALID STATE: member " + this.getName());
         }
     }
 
@@ -8791,33 +8814,46 @@ class Member extends FieldObject {
         return this.constructor.generator.setDataOk;
     }
 
-    /** This returns the pre calc error. */
+    /** This returns the list of errors. The entries can be javscript Error objects, members (signifying a
+     * dependency error), strings or other objects (which should be converted to strings). */
     getErrors() {
         let stateStruct = this.getField("state");
-        let errorList;
         if(stateStruct) {
-            //If this happens, we will just make it state normal
-            errorList = stateStruct.errorList;
+            return stateStruct.errorList;
         }
-        if(!errorList) {
-            //just return an emptylist
-            errorList = [];
+        else {
+            //this shouldn't happen if the state is actually an error state
+            return [];
         }
-        return errorList;
     }
 
     getErrorMsg() {
-        let stateStruct = this.getField("state");
-        let errorMsg;
-        if(stateStruct) {
-            //If this happens, we will just make it state normal
-            errorMsg = stateStruct.errorMsg;
+        let errorList = this.getErrors();
+        let errorMsgs = [];
+        let dependentMemberNames = [];
+        errorList.forEach( errorEntry => {
+            if(errorEntry.isDependsOnError) {
+                dependentMemberNames.push(errorEntry.name);
+            }
+            else errorMsgs.push(errorEntry.toString());
+        });
+        if(dependentMemberNames.length > 0) {
+            errorMsgs.push( "Error in dependency: " + dependentMemberNames.join(", "));
         }
-        if(!errorMsg) {
-            //just return an emptylist
-            errorMsg = UNKNOWN_ERROR_MSG_PREFIX + this.getName();
-        }
+        
+        let errorMsg = errorMsgs.join("; ");
         return errorMsg;
+    }
+
+    getDependsOnError() {
+        let stateStruct = this.getField("state");
+        if(stateStruct) {
+            return stateStruct.dependsOnError;
+        }
+        else {
+            //this shouldn't happen if the state is actually an error state
+            return {};
+        }
     }
 
     /** This returns true if the member is not up to date, typically
@@ -8835,87 +8871,79 @@ class Member extends FieldObject {
     // Update Data/State functions
     //=======================================
 
-    /** This method clears the state field. */
+    /** This method sets the state to none, signifying an invalid state. */
     clearState() {
-        this.clearField("state");
+        this.setField("state",{"state":apogeeutil.STATE_NONE});
     }
 
     /** This method sets the data for this object. This is the object used by the 
      * code which is identified by this name, for example the JSON object associated
-     * with a JSON table. Besides hold the data object, this updates the parent data map. */
-    setData(data) {
-        this.setField("data",data);
-        this._setState(apogeeutil.STATE_NORMAL,data);
+     * with a JSON table. */
+    setData(model,data) {
+        this.setStateAndData(model,apogeeutil.STATE_NORMAL,data);
     }
 
-    /** This method adds an error for this member. It will be valid for the current round of calculation of
-     * this member. The error may be a javascript Error object of string (or any other object really). 
-     * The optional data value should typically be undefined unless there is a specifc data value that should be
-     * set with the error state. */
-    setError(error) {
-        this._setState(apogeeutil.STATE_ERROR,undefined,[error]);
+    /** This method adds the following error for this member. It will be valid for the current round of calculation of
+     * this member. The error should be a javascript Error object, an apogee Member (signifying a dependnecy
+     * error), a string, or another type, which will be interpretted as a string. */
+    setError(model,error) {
+        this.setStateAndData(model,apogeeutil.STATE_ERROR,apogeeutil.INVALID_VALUE,[error]);
     }
 
-    /** This method sets the pre calc error for this dependent. 
-     * The optional data value should typically be undefined unless there is a specifc data value that should be
-     * set with the error state. */
-    setErrors(errorList) {
-        this._setState(apogeeutil.STATE_ERROR,undefined,errorList);
+    /** This method adds the following errors for this member. See setError for more details. */
+    setErrors(model,errorList) {
+        this.setStateAndData(model,apogeeutil.STATE_ERROR,apogeeutil.INVALID_VALUE,errorList);
     }
 
-    /** This sets the result pending flag. If there is a promise setting this member to pending, it should
-     * be passed as an arg. In this case the field will be updated only if the reolving promise matches this
-     * set promise. Otherwise it is assumed the promise had been superceded. In the case this member is pending
-     * because it depends on a remote pending member, then no promise should be passed in to this function. 
-     * The optional data value should typically be undefined unless there is a specifc data value that should be
-     * set with the pending state. */
-    setResultPending(promise) {
-        this._setState(apogeeutil.STATE_PENDING);
+    /** This sets the result pending flag. The promise triggering the pending state should also be passed if there
+     * is one for this member. If the state is pending because it depends on a pending member, the promise should be
+     * left as undefined.*/
+    setResultPending(model,promise) {
+        this.setStateAndData(model,apogeeutil.STATE_PENDING,apogeeutil.INVALID_VALUE);
         if(promise) {
             this.setField("pendingPromise",promise);
         }
     }
 
     /** This sets the result invalid flag. If the result is invalid, any
-     * table depending on this will also have an invalid value. 
-     * The optional data value should typically be undefined unless there is a specifc data value that should be
-     * set with the invalid state. */
-    setResultInvalid() {
-        this._setState(apogeeutil.STATE_INVALID);
+     * table depending on this will also have an invalid value. */
+    setResultInvalid(model) {
+        this.setStateAndData(model,apogeeutil.STATE_INVALID,apogeeutil.INVALID_VALUE);
     }
 
     /** This methos sets the data, where the data can be a generalized value
      *  include data, apogeeutil.INVALID_VALUE, a Promis or an Error. Also, an explitict
      * errorList can be passed in, includgin either Error or String objects. 
      * This method does not however apply the asynchrnous data, it only flags the member as pending.
-     * the asynchronous data is set separately (also) using applyAsynchData, whcih requires access
+     * the asynchronous data is set separately (also) using applyAsynchFutureValue, whcih requires access
      * to the model object. */
-    applyData(data,errorList) {
+    applyData(model,data,errorList) {
 
         //handle four types of data inputs
         if((errorList)&&(errorList.length > 0)) {
-            this.setErrors(errorList);
+            this.setErrors(model,errorList);
         }
         else if(data instanceof Promise) {
             //data is a promise - flag this a pending
-            this.setResultPending(data);
+            this.setResultPending(model,data);
         }
         else if(data instanceof Error) {
             //data is an error
-            this.setError(data);
+            this.setError(model,data);
         }
         else if(data === apogeeutil.INVALID_VALUE) {
             //data is an invalid value
-            this.setResultInvalid();
+            this.setResultInvalid(model);
         }
         else {
             //normal data update (poosibly from an asynchronouse update)
-            this.setData(data);
+            this.setData(model,data);
         }
     }
 
-    /** This method implements setting asynchronous data on the member using a promise. */
-    applyAsynchData(model,promise) {
+    /** This method implements setting asynchronous data on the member using a promise.
+     * This does not however set the current pending state. */
+    applyAsynchFutureValue(model,promise) {
 
         //kick off the asynch update
         var asynchCallback = memberValue => {
@@ -8940,11 +8968,74 @@ class Member extends FieldObject {
         promise.then(asynchCallback).catch(asynchErrorCallback);
     }
 
-    /** This method can be called to set data without setting the state. It is intended to be
-     * used by the folder to set the data value when an error, pending or invalid state is present. This
-     * data value is used for pass-through dependenceis. */
-    forceUpdateDataWithoutStateChange(data) {
-        this.setField("data",data);
+    
+    /** This method updates the state and data. This should not typically be called directly instead the individual
+     * data and state setters should be called.
+     * The data value will be applied regardless of the state. The error list is applied only if the state is ERROR. */
+    setStateAndData(model,state,data,errorList) {
+        //set data as specified
+        if(data == undefined) {
+            this.clearField("data");
+        }
+        else {
+            this.setField("data",data);
+        }
+
+        //set the state if it is error or if it changes
+        let oldStateStruct = this.getField("state");
+        if((state == apogeeutil.STATE_ERROR)||(!oldStateStruct)||(state != oldStateStruct.state)) {
+            //update the state
+            let newStateStruct = {};
+
+            //do some safety checks on the error list
+            if(state == apogeeutil.STATE_ERROR) {
+                //make sure there is an error list
+                if(!errorList) errorList = [];
+
+                let newErrorList;
+                let dependsOnError;
+                if(oldStateStruct.state == apogeeutil.STATE_ERROR) {
+                    newErrorList = this._getMergedErrorList(oldStateStruct.errorList,errorList);
+                    //keep the old depends on error, because some people might already have a copy of it
+                    //but update it for new error list
+                    //this is cheating because this should be immutable if we store it as a field
+                    //I'm not sure what better to do right now.
+                    dependsOnError = oldStateStruct.dependsOnError;
+                    dependsOnError.errorList = newErrorList;
+                }
+                else {
+                    newErrorList = errorList;
+                    //instantiate the "depends on error"
+                    dependsOnError = new Error("Error in dependency: " + this.getName());
+                    dependsOnError.isDependsOnError = true;
+                    dependsOnError.errorList = newErrorList;
+                    dependsOnError.id = this.getId();
+                    //note - name can change, but if it does this should be recalculated
+                    dependsOnError.name = this.getName(); 
+                }
+
+                newStateStruct.state = apogeeutil.STATE_ERROR;
+                newStateStruct.errorList = newErrorList;
+                newStateStruct.dependsOnError = dependsOnError;
+            }
+            else {
+                newStateStruct.state = state;
+            }
+            this.setField("state",newStateStruct);
+        }
+
+        //clear the pending promise
+        //note that the pending promise must be set elsewhere if we are in pending
+        if(this.getField("pendingPromise")) {
+            this.clearField("pendingPromise");
+        }
+
+        //notify parent of update
+        let parentId = this.getField("parentId");
+        if(parentId) {
+            let parent = model.getMutableMember(parentId);
+            parent.childDataUpdate(model,this);
+        }
     }
 
     //========================================
@@ -8964,6 +9055,11 @@ class Member extends FieldObject {
         if(currentParentId != newParent.getId()) {
             this.setField("parentId",newParent.getId());
         }
+    }
+
+    /** This should only be used for intially setting the parent id. */
+    setParentId(parentId) {
+        this.setField("parentId",parentId);
     }
 
     //========================================
@@ -9002,72 +9098,21 @@ class Member extends FieldObject {
     // State setting methods
     //----------------------------------
 
-    /** This updates the state. For state NORMAL, the data should be set. 
-     * For any state other than NORMAL, the data will be set to INVALID, regardless of 
-     * what argument is given for data.
-     * For state ERROR, an error list should be set. */
-    _setState(state,data,errorList) {
-        let newStateStruct = {};
-        let oldStateStruct = this.getField("state");
 
-        //don't update state if it is the same value (unless it is error, then we will update it
-        //becuase I don't feel like comparing the error messages)
-        if((oldStateStruct)&&(oldStateStruct.state == state)&&(state != apogeeutil.STATE_ERROR)) {
-            return;
-        }
-
-        //do some safety checks on the error list
-        if(state == apogeeutil.STATE_ERROR) {
-            //make sure there is an error list
-            if(!errorList) errorList = [];
-
-            newStateStruct.state = apogeeutil.STATE_ERROR;
-            newStateStruct.errorList = errorList;
-            if(errorList.length > 0) {
-                newStateStruct.errorMsg = errorList.join("\n");
-            }
-            else {
-                newStateStruct.errorMsg = UNKNOWN_ERROR_MSG_PREFIX + this.getName();
-            }
-        }
-        else {
-            //here we ignore the error list if there was one (there shouldn't be)
-            newStateStruct.state = state;
-        }
-
-        
-
-        //set the data if we passed it in, regardless of state
-        this.setField("state",newStateStruct);
-        this.setField("data",data);
-        if(state == apogeeutil.STATE_NORMAL) {
-            if(data !== undefined) {
-                this.setField("data",data);
-            }
-            else {
-                this.clearField("data");
-            }
-        }
-        else { 
-            this.setField("data",apogeeutil.INVALID_VALUE);
-        }
-        
-        //clear the pending promise, if we are not in pending state
-        //note that the pending promise must be set elsewhere
-        if(state != apogeeutil.STATE_PENDING) {
-            if(this.getField("pendingPromise")) {
-                this.clearField("pendingPromise");
-            }
-        }
+    /** This method adds any errors from the new addedErrorList to the oldErrorList if
+     * they are not already present. */
+    _getMergedErrorList(oldErrorList,addedErrorList) {
+        let errorsToAdd = [];
+        addedErrorList.forEach( element => {
+            if(oldErrorList.indexOf(element) < 0) errorsToAdd.push(element);
+        });
+        return oldErrorList.concat(errorsToAdd);
     }
-
 
 }
 
 //add mixins to this class
 apogeeutil.mixin(Member,FieldObject);
-
-let UNKNOWN_ERROR_MSG_PREFIX = "Unknown error in member ";
 
 /** This mixin encapsulates an member whose value depends on on another
  * member. The dependent allows for a recalculation based on an update of the 
@@ -9081,8 +9126,8 @@ let UNKNOWN_ERROR_MSG_PREFIX = "Unknown error in member ";
 class DependentMember extends Member {
 
     /** This initializes the component */
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
+    constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
 
         //==============
         //Fields
@@ -9136,6 +9181,7 @@ class DependentMember extends Member {
     /** This does any init needed for calculation.  */
     prepareForCalculate() {
         this.calcPending = true;
+
         //clear any errors, and other state info
         this.clearState();
     }
@@ -9143,45 +9189,59 @@ class DependentMember extends Member {
     ///** This updates the member based on a change in a dependency.  */
     //calculate(model);
 
+    /** This method calculates the contribution to the state of the member based on it dependencies. */
+    calculateDependentState(model,doSetState) {
+        let errorList = [];
+        let resultPending = false;
+        let resultInvalid = false;
+
+        let dependsOnMap = this.getField("dependsOnMap");
+        for(var idString in dependsOnMap) {
+            let impactor = model.lookupMemberById(idString);
+            
+            let impactorState = impactor.getState();
+            if(impactorState == apogeeutil.STATE_ERROR) {
+                errorList.push(impactor.getDependsOnError());
+            } 
+            else if(impactorState == apogeeutil.STATE_PENDING) {
+                resultPending = true;
+            }
+            else if(impactorState == apogeeutil.STATE_INVALID) {
+                resultInvalid = true;
+            }
+        }
+
+        let state;
+        if(errorList.length > 0) {
+            state = apogeeutil.STATE_ERROR;
+            if(doSetState) this.setErrors(model,errorList);
+        }
+        else if(resultPending) {
+            state = apogeeutil.STATE_PENDING;
+            if(doSetState) this.setResultPending(model);
+        }
+        else if(resultInvalid) {
+            state = apogeeutil.STATE_INVALID;
+            if(doSetState) this.setResultInvalid(model);
+        }
+        else {
+            state = apogeeutil.STATE_NORMAL;
+            //state not set in normal case - will be set when data is set
+        }
+
+        return {state, errorList};
+    }
+
     /** This method makes sure any impactors are set. It sets a dependency 
      * error if one or more of the dependencies has a error. */
     initializeImpactors(model) {
-        var errorDependencies = [];
-        var resultPending = false;
-        var resultInvalid = false;
-        
         //make sure dependencies are up to date
         let dependsOnMap = this.getField("dependsOnMap");
         for(var idString in dependsOnMap) {
-            let dependsOnType = dependsOnMap[idString];
             let impactor = model.lookupMemberById(idString);
             if((impactor.isDependent)&&(impactor.getCalcPending())) {
                 impactor.calculate(model);
             }
-
-            //inherit the the state of the impactor only if it is a normal dependency, as oppose to a pass through dependency
-            if(dependsOnType == apogeeutil.NORMAL_DEPENDENCY) {
-                let impactorState = impactor.getState();
-                if(impactorState == apogeeutil.STATE_ERROR) {
-                    errorDependencies.push(impactor);
-                } 
-                else if(impactorState == apogeeutil.STATE_PENDING) {
-                    resultPending = true;
-                }
-                else if(impactorState == apogeeutil.STATE_INVALID) {
-                    resultInvalid = true;
-                }
-            }
-        }
-
-        if(errorDependencies.length > 0) {
-            this.createDependencyError(model,errorDependencies);
-        }
-        else if(resultPending) {
-            this.setResultPending();
-        }
-        else if(resultInvalid) {
-            this.setResultInvalid();
         }
     }
 
@@ -9225,18 +9285,6 @@ class DependentMember extends Member {
 
         return dependenciesUpdated;
     }
-
-    /** This method creates an dependency error, given a list of impactors that have an error. 
-     * @private */
-    createDependencyError(model,errorDependencies) {
-            //dependency error found
-            var message = "Error in dependency: ";
-            for(var i = 0; i < errorDependencies.length; i++) {
-                if(i > 0) message += ", ";
-                message += errorDependencies[i].getFullName(model);
-            }
-            this.setError(message);   
-    }
 }
 
 /** This mixin encapsulates an object in that can be coded. It contains a function
@@ -9256,8 +9304,8 @@ class DependentMember extends Member {
 class CodeableMember extends DependentMember {
 
     /** This initializes the component. argList is the arguments for the object function. */
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
+    constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
 
         //mixin init where needed. This is not a scoep root. Parent scope is inherited in this object
         this.contextHolderMixinInit(false);
@@ -9276,6 +9324,13 @@ class CodeableMember extends DependentMember {
             //"functionBody";
             //"supplementalCode";
             //"compiledInfo"
+        }
+        else {
+            //this is treated as a fixed variable rather than a field
+            //it can be set only on creation
+            if(instanceToCopy.contextParentGeneration) {
+                this.contextParentGeneration = instanceToCopy.contextParentGeneration;
+            }
         }
         
         //==============
@@ -9354,7 +9409,7 @@ class CodeableMember extends DependentMember {
         
         if((this.hasCode())&&(compiledInfo.valid)) {
             //set the dependencies
-            var dependsOnMap = getDependencyInfo(compiledInfo.varInfo,model,this.getContextManager());
+            var dependsOnMap = getDependencyInfo(compiledInfo.varInfo,model,this.getCodeContextManager(model));
             this.updateDependencies(model,dependsOnMap);
             
         }
@@ -9372,7 +9427,7 @@ class CodeableMember extends DependentMember {
                     
             //calculate new dependencies
             let oldDependsOnMap = this.getDependsOn();
-            let newDependsOnMap = getDependencyInfo(compiledInfo.varInfo,model,this.getContextManager());
+            let newDependsOnMap = getDependencyInfo(compiledInfo.varInfo,model,this.getCodeContextManager(model));
 
             if(!apogeeutil.jsonEquals(oldDependsOnMap,newDependsOnMap)) {
                 //if dependencies changes, make a new mutable copy and add this to 
@@ -9398,21 +9453,18 @@ class CodeableMember extends DependentMember {
     calculate(model) {
         let compiledInfo = this.getField("compiledInfo");
         if(!compiledInfo) {
-            this.setError("Code not found for member: " + this.getName());
+            this.setError(model,"Code not found for member: " + this.getName());
             this.clearCalcPending();
             return;
         }
         else if(!compiledInfo.valid) {
-            this.setErrors(compiledInfo.errors);
+            this.setErrors(model,compiledInfo.errors);
             this.clearCalcPending();
             return;
         }
-
-//temporary - re create the initializer
-let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
       
         try {
-            this.processMemberFunction(model,memberFunctionInitializer,compiledInfo.memberFunctionGenerator);
+            this.processMemberFunction(model,compiledInfo.memberFunctionGenerator);
         }
         catch(error) {
             
@@ -9420,13 +9472,13 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
                 //This is not an error. I don't like to throw an error
                 //for an expected condition, but I didn't know how else
                 //to do this. See notes where this is thrown.
-                this.setResultInvalid();
+                this.setResultInvalid(model);
             }
             else if(error == apogeeutil.MEMBER_FUNCTION_PENDING_THROWABLE) {
                 //This is not an error. I don't like to throw an error
                 //for an expected condition, but I didn't know how else
                 //to do this. See notes where this is thrown.
-                this.setResultPending();
+                this.setResultPending(model);
             }
             //--------------------------------------
             else {
@@ -9438,7 +9490,7 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
                     console.error(error.stack);
                 }
 
-                this.setError(error);
+                this.setError(model,error);
             }
         }
         
@@ -9449,7 +9501,7 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
     // Member Methods
     //------------------------------
 
-    /** This gets an update structure to upsate a newly instantiated member
+    /** This gets an update structure to update a newly instantiated member
     /* to match the current object. */
     getUpdateData() {
         var updateData = {};
@@ -9472,22 +9524,59 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
                 updateData.data = "<unknown pending value>";
             }
             else if(state == apogeeutil.STATE_ERROR) {
-                //save the errors as strings only
-                updateData.errorList = this.getErrors().map(error => error.toString());
+                //save a single error
+                updateData.errorList = [this.getErrorMsg()];
             }
             else {
                 //save the data value
                 updateData.data = this.getData();
             }
         }
+
+        if(this.contextParentGeneration) {
+            updateData.contextParentGeneration = this.contextParentGeneration;
+        }
+
         return updateData;
+    }
+
+    /** This member initialized the codeable fields for a member. */
+    setUpdateData(model,initialData) {
+        //apply the initial data
+        if(initialData.functionBody !== undefined) {
+            //apply initial code
+            this.applyCode(initialData.argList,
+                initialData.functionBody,
+                initialData.supplementalCode);
+        }
+        else {
+            //set initial data
+            if(initialData.errorList) {
+                this.setErrors(model,initialData.errorList);
+            }
+            else if(initialData.invalidError) {
+                this.setResultInvalid(model);
+            }
+            else {
+                let data = (initialData.data !== undefined) ? initialData.data : "";
+                this.setData(model,data);
+            }
+
+            //set the code fields to empty strings
+            this.setField("functionBody","");
+            this.setField("supplementalCode","");
+        }
+
+        if(initialData.contextParentGeneration) {
+            this.contextParentGeneration = initialData.contextParentGeneration;
+        }
     }
 
     //------------------------------
     //ContextHolder methods
     //------------------------------
 
-    /** This method retrieve creates the loaded context manager. */
+    /** This method creates the context manager for this member. */
     createContextManager() {
         return new ContextManager(this);
     }
@@ -9507,6 +9596,42 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
         this.doSupressMessenger = doSupressMessenger;
     }
 
+    /** This function just returns the context manager for the code for this object. 
+     * This is nominally the context manager for this object. However, There is an allowance
+     * to use a replacement for the context manager as used in the code.
+     * This is specifically intended for compound members where the end user is providing code,
+     * such as through a form with expressions for input. In this case we want to code to be executed as
+     * if it were on a different member. In the above menetioned case, the code should be from the parent page 
+     * where the user is entering the form data. To do this, the contextParentGeneration should be set to 
+     * the number of parent generations that should be used for the context member.
+     */
+    getCodeContextManager(model) {
+        let contextMember;
+        if(this.contextParentGeneration) {
+            contextMember = this.getRemoteContextMember(model);
+        }
+        else {
+            contextMember = this;
+        }
+
+        return contextMember.getContextManager();
+    }
+
+    /** This function is used to get a remote context member */
+    getRemoteContextMember(model) {
+        let contextMember = this;
+        let parentCount = this.contextParentGeneration;
+        while((parentCount)&&(contextMember)) {
+            contextMember = contextMember.getParent(model);
+            parentCount--;
+        }
+        //if we have not context member, revert to the local object
+        if(!contextMember) contextMember = this;
+        return contextMember;
+    }
+
+
+
     //===================================
     // Private Functions
     //===================================
@@ -9517,7 +9642,7 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
     //processMemberFunction 
     
     /** This makes sure user code of object function is ready to execute.  */
-    createMemberFunctionInitializer(model) {
+    initializeMemberFunction(model) {
         //we want to hold these as closure variables
         let functionInitialized = false;
         let functionInitializedSuccess = false;
@@ -9528,7 +9653,7 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
             
             //make sure this in only called once
             if(this.dependencyInitInProgress) {
-                this.setError("Circular reference error");
+                this.setError(model,"Circular reference error");
                 //clear calc in progress flag
                 this.dependencyInitInProgress = false;
                 functionInitialized = true;
@@ -9540,8 +9665,10 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
             try {
                 //make sure the data is set in each impactor
                 this.initializeImpactors(model);
+                this.calculateDependentState(model,true);
                 let state = this.getState();
                 if((state == apogeeutil.STATE_ERROR)||(state == apogeeutil.STATE_PENDING)||(state == apogeeutil.STATE_INVALID)) {
+                    //stop initialization if there is an issue in a dependent
                     this.dependencyInitInProgress = false;
                     functionInitialized = true;
                     functionInitializedSuccess = false;
@@ -9551,7 +9678,7 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
                 //set the context
                 let compiledInfo = this.getField("compiledInfo");
                 let messenger = this.doSupressMessenger ? undefined : new Messenger(model,this);
-                compiledInfo.memberFunctionContextInitializer(model,this.getContextManager(),messenger);
+                compiledInfo.memberFunctionContextInitializer(model,this.getCodeContextManager(model),messenger);
                 
                 functionInitializedSuccess = true;
             }
@@ -9561,7 +9688,7 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
                     console.error(error.stack);
                 }
 
-                this.setError(error);
+                this.setError(model,error);
                 functionInitializedSuccess = false;
             }
             
@@ -9570,7 +9697,7 @@ let memberFunctionInitializer = this.createMemberFunctionInitializer(model);
             return functionInitializedSuccess;
         };
 
-        return memberFunctionInitializer;
+        return memberFunctionInitializer();
 
     }
 
@@ -9586,8 +9713,8 @@ apogeeutil.mixin(CodeableMember,ContextHolder);
 */
 class JsonTable extends CodeableMember {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
+    constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
     }
 
     //------------------------------
@@ -9601,17 +9728,18 @@ class JsonTable extends CodeableMember {
         return [];
     }
         
-    processMemberFunction(model,memberFunctionInitializer,memberGenerator) {
-        let initialized = memberFunctionInitializer();
+    /** This is he process member function from codeable. */
+    processMemberFunction(model,memberGenerator) {
+        let initialized = this.initializeMemberFunction(model);
         if(initialized) {
             //the data is the output of the function
             let memberFunction = memberGenerator();
             let data = memberFunction();
-            this.applyData(data);
+            this.applyData(model,data);
 
             //we must separately apply the asynch data set promise if there is one
             if((data)&&(data instanceof Promise)) {
-                this.applyAsynchData(model,data);
+                this.applyAsynchFutureValue(model,data);
             }
         } 
     }
@@ -9629,53 +9757,27 @@ class JsonTable extends CodeableMember {
     /** This method extends set data from member. It also
      * freezes the object so it is immutable. (in the future we may
      * consider copying instead, or allowing a choice)*/
-    setData(data) {
+    setData(model,data) {
         
         //make this object immutable
         apogeeutil.deepFreeze(data);
 
         //store the new object
-        return super.setData(data);
+        return super.setData(model,data);
     }
 
     /** This method creates a member from a json. It should be implemented as a static
      * method in a non-abstract class. */ 
-    static fromJson(parentId,json) {
-        let member = new JsonTable(json.name,parentId,null,null,json.specialIdValue);
+    static fromJson(model,json) {
+        let member = new JsonTable(json.name,null,null,json.specialIdValue);
 
-        //set initial data
-        let initialData = json.updateData;
-        if(!initialData) {
-            //default initail value
-            initialData = {};
-            initialData.data = "";
-        }  
+        //get a copy of the initial data and set defaults if needed
+        let initialData = {};
+        Object.assign(initialData,json.updateData);
 
-        //apply the initial data
-        if(initialData.functionBody !== undefined) {
-            //apply initial code
-            member.applyCode(initialData.argList,
-                initialData.functionBody,
-                initialData.supplementalCode);
-        }
-        else {
-            //apply initial data
-            let data;
-            let errorList;
+        if((!initialData.functionBody)&&(!initialData.data)) initialData.data = "";
 
-            if(initialData.errorList) errorList = initialData.errorList;
-            else if(initialData.invalidError) data = apogeeutil.INVALID_VALUE;
-            else if(initialData.data !== undefined) data = initialData.data;
-            else data = "";
-
-            //apply the initial data
-            //note for now this can not be a promise, so we do not need to also call applyAsynchData.
-            member.applyData(data,errorList);
-
-            //set the code fields to empty strings
-            member.setField("functionBody","");
-            member.setField("supplementalCode","");
-        }
+        member.setUpdateData(model,initialData);
 
         return member;
     }
@@ -9698,8 +9800,8 @@ Model.addMemberGenerator(JsonTable.generator);
 /** This is a function. */
 class FunctionTable extends CodeableMember {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
+    constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
         
         //The messenger should not be available from the formula for this member
         //see details in the CodeableMember function below.
@@ -9710,18 +9812,20 @@ class FunctionTable extends CodeableMember {
     // Codeable Methods
     //------------------------------
 
-    processMemberFunction(model,memberFunctionInitializer,memberGenerator) {
-        var memberFunction = this.getLazyInitializedMemberFunction(memberFunctionInitializer,memberGenerator);
-        this.setData(memberFunction);
+    processMemberFunction(model,memberGenerator) {
+        var memberFunction = this.getLazyInitializedMemberFunction(model,memberGenerator);
+        this.setData(model,memberFunction);
     }
 
-    getLazyInitializedMemberFunction(memberFunctionInitializer,memberGenerator) {
+    getLazyInitializedMemberFunction(model,memberGenerator) {
 
         //create init member function for lazy initialization
         //we need to do this for recursive functions, or else we will get a circular reference
+        //here we have logic to notify of an error or other problem in the function
         var initMember = () => {
-            var impactorSuccess = memberFunctionInitializer();
+            var impactorSuccess = this.initializeMemberFunction(model);
             if(impactorSuccess) {
+                //this returns the member function
                 return memberGenerator();
             }
             else {
@@ -9734,7 +9838,7 @@ class FunctionTable extends CodeableMember {
                 //how else to stop the calculation other than throwing an error, so 
                 //we do that here. It should be handled by anyone calling a function.
                 if(state == apogeeutil.STATE_ERROR) {
-                    issue = new Error("Error in dependency: " + this.getName());
+                    issue = this.getDependsOnError();
                 }
                 else if(state == apogeeutil.STATE_PENDING) {
                     issue = apogeeutil.MEMBER_FUNCTION_PENDING_THROWABLE;
@@ -9750,53 +9854,46 @@ class FunctionTable extends CodeableMember {
             } 
         };
 
-        //this is called from separate code to make debugging more readable
-        return __functionTableWrapper(initMember,this.getName());
+        //create the lazy initialize function
+        let memberInitialized = false;
+        let source = {};
+
+        source.initIfNeeded = () => {
+            if(!memberInitialized) {
+                memberInitialized = true;
+                source.memberFunction = initMember();
+            }
+        };
+
+        //create the wrapped function - we call this from the debug file to make this cleaner for the
+        //user, since they will run through it from the debugger.
+        let wrappedMemberFunction = __functionTableWrapper(this.getName(),source);
+
+        //add an function on this function to allow external initialization if needed (if the function is not called before the model is locked)
+        wrappedMemberFunction.initIfNeeded = source.initIfNeeded;
+
+        return wrappedMemberFunction;
     }
 
-    /** Add to the base lock function - The function is lazy initialized so it can call itself without a 
+    /** The function is lazy initialized so it can call itself without a 
      * ciruclar reference. The initialization happens on the first actual call. This is OK if we are doing the
      * model calculation. but if it is first called _AFTER_ the model has completed being calculated, such as
      * externally, then we will get a locked error when the lazy initialization happens. Instead, we will
      * complete the lazy initialization before the lock is done. At this point we don't need to worry about
      * circular refernce anyway, since the model has already completed its calculation. */
-    lock() {
+    lazyInitializeIfNeeded() {
         //check if the function is initialized
         let memberFunction = this.getData();
-        if((memberFunction)&&(memberFunction.initializeIfNeeded)) {
+        if((memberFunction)&&(memberFunction.initIfNeeded)) {
             try {
-                memberFunction.initializeIfNeeded();
+                memberFunction.initIfNeeded();
             }
             catch(error) {
-                //handle potential error cases!!!:
-                
-                if(error == apogeeutil.MEMBER_FUNCTION_INVALID_THROWABLE) {
-                    //This is not an error. I don't like to throw an error
-                    //for an expected condition, but I didn't know how else
-                    //to do this. See notes where this is thrown.
-                    this.setResultInvalid();
-                }
-                else if(error == apogeeutil.MEMBER_FUNCTION_PENDING_THROWABLE) {
-                    //This is not an error. I don't like to throw an error
-                    //for an expected condition, but I didn't know how else
-                    //to do this. See notes where this is thrown.
-                    this.setResultPending();
-                }
-                //--------------------------------------
-                else {
-                    //normal error in member function execution
-                
-                    //this is an error in the code
-                    if(error.stack) {
-                        console.error(error.stack);
-                    }
-    
-                    this.setError(error);
-                }
+                //this error is already handled in the function table initializer
+                //it is rethrown so a calling member can also get the error, since it was not present at regular intialization
+                //if we initialize here in lock, that means there is nobody who called this.
             }
-
         }
-        super.lock();
     }
 
     //------------------------------
@@ -9805,16 +9902,18 @@ class FunctionTable extends CodeableMember {
 
     /** This method creates a member from a json. It should be implemented as a static
      * method in a non-abstract class. */ 
-    static fromJson(parentId,json) {
-        let member = new FunctionTable(json.name,parentId,null,null,json.specialIdValue);
+    static fromJson(model,json) {
+        let member = new FunctionTable(json.name,null,null,json.specialIdValue);
 
-        //set initial data
-        let initialData = json.updateData;
+        //get a copy of the initial data and set defaults if needed
+        let initialData = {};
+        Object.assign(initialData,json.updateData);
 
-        var argList = initialData.argList ? initialData.argList : [];
-        var functionBody = initialData.functionBody ? initialData.functionBody : "";
-        var supplementalCode = initialData.supplementalCode ? initialData.supplementalCode : "";
-        member.applyCode(argList,functionBody,supplementalCode);
+        if(!initialData.argList) initialData.argList = [];
+        if(!initialData.functionBody) initialData.functionBody = "";
+        if(!initialData.supplementalCode) initialData.supplementalCode = "";
+
+        member.setUpdateData(model,initialData);
 
         return member;
     }
@@ -9862,39 +9961,167 @@ FunctionTable.generator.setCodeOk = true;
 //register this member
 Model.addMemberGenerator(FunctionTable.generator);
 
+/** This function defines a JsonTable that is hard coded. It is automatically added to
+ * the workspace under the name typeName. */
+function defineHardcodedJsonTable(displayName,typeName,functionBody,optionalPrivateCode) {
+
+    class HardcodedJsonTable extends JsonTable {
+
+        constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+            super(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
+        }
+
+        /** This overrides the get update data method so there is not saved data. */
+        getUpdateData() {
+            return undefined;
+        }
+        
+        /** This method makes the instance using the hardocded data rather than saved data. */
+        static fromJson(model,json) {
+            let member = new HardcodedJsonTable(json.name,null,null,json.specialIdValue);
+
+            //set the initial data to the hardcoded code value
+            let initialData = {
+                argList: [],
+                functionBody: functionBody,
+                aupplementalCode: optionalPrivateCode ? optionalPrivateCode : ""
+            };
+
+            member.setUpdateData(model,initialData);
+
+            return member;
+        }
+    }
+
+    HardcodedJsonTable.generator = {};
+    HardcodedJsonTable.generator.displayName = displayName;
+    HardcodedJsonTable.generator.type = typeName;
+    HardcodedJsonTable.generator.createMember = HardcodedJsonTable.fromJson;
+    HardcodedJsonTable.generator.setDataOk = false;
+    HardcodedJsonTable.generator.setCodeOk = false;
+
+    //register this member
+    Model.addMemberGenerator(HardcodedJsonTable.generator);
+}
+
+/** This function defines a FunctionTable thatis hard coded. It is automatically added to
+ * the workspace under the name typeName. */
+function defineHardcodedFunctionTable(displayName,typeName,argListArray,functionBody,optionalPrivateCode) {
+
+    class HardcodedFunctionTable extends FunctionTable {
+
+        constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+            super(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
+        }
+
+        /** This overrides the get update data method so there is not saved data. */
+        getUpdateData() {
+            return undefined;
+        }
+        
+        /** This method makes the instance using the hardocded data rather than saved data. */
+        static fromJson(model,json) {
+            let member = new HardcodedJsonTable(json.name,null,null,json.specialIdValue);
+
+            //set the initial data to the hardcoded code value
+            let initialData = {
+                argList: argListArray,
+                functionBody: functionBody,
+                aupplementalCode: optionalPrivateCode ? optionalPrivateCode : ""
+            };
+
+            member.setUpdateData(model,initialData);
+
+            return member;
+        }
+    }
+
+    HardcodedFunctionTable.generator = {};
+    HardcodedFunctionTable.generator.displayName = displayName;
+    HardcodedFunctionTable.generator.type = typeName;
+    HardcodedFunctionTable.generator.createMember = HardcodedFunctionTable.fromJson;
+    HardcodedFunctionTable.generator.setDataOk = false;
+    HardcodedFunctionTable.generator.setCodeOk = false;
+
+    //register this member
+    Model.addMemberGenerator(HardcodedFunctionTable.generator);
+}
+
+function getSerializedHardcodedTable(instanceName,typeName) {
+    return {
+        "name": instanceName,
+        "type": typeName
+    }
+}
+
 /** This is a folder. */
 class Folder extends DependentMember {
 
-    constructor(name,parent,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
-        super(name,parent,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
+    constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
 
         //mixin init where needed
         //This is not a root. Scope is inherited from the parent.
         this.contextHolderMixinInit(false);
         this.parentMixinInit(instanceToCopy);
-
-        //initialize data value if this is a new folder
-        if(!instanceToCopy) {
-            let dataMap = {};
-            Object.freeze(dataMap);
-            this.setData(dataMap);
-        }
     }
 
     //------------------------------
     // Parent Methods
     //------------------------------
 
+    /** In this implementation updates the dependencies and updates the data value for the folder. See notes on why the update is
+     * done here rather than in 'calculate' */
     onAddChild(model,child) {
         //set all children as dependents
         let dependsOnMap = this.calculateDependents(model);
         this.updateDependencies(model,dependsOnMap);
+
+        //recalculate data and state
+        let name = child.getName();
+        let data = child.getData();
+        let newDataMap = this._getSplicedDataMap(model,name,data);
+        let {state, errorList} = this.calculateDependentState(model,false);
+
+        //set the new state and data
+        this.setStateAndData(model,state,newDataMap,errorList,true);
     }
 
+    /** In this implementation updates the dependencies and updates the data value for the folder. See notes on why the update is
+     * done here rather than in 'calculate' */
     onRemoveChild(model,child) {
         //set all children as dependents
         let dependsOnMap = this.calculateDependents(model);
         this.updateDependencies(model,dependsOnMap);
+
+        //recalculate data and state
+        let name = child.getName();
+        let newDataMap = this._getSplicedDataMap(model,name);
+        let {state, errorList} = this.calculateDependentState(model,false);
+
+        //set the new state and data
+        this.setStateAndData(model,state,newDataMap,errorList,true);
+    }
+
+    /** In this implementation we update the data value for the folder. See notes on why this is
+     * done here rather than in 'calculate' */
+    onChildDataUpdate(model,child) {
+        let childId = child.getId();
+        let childIdMap = this.getChildIdMap();
+        let name = child.getName();
+        if(childIdMap[name] != childId) {
+            alert("Error - the table " + childId + " is not registered in the parent under the name "  + name);
+            return;
+        }
+
+        //get new data
+        let data = child.getData();
+        let newDataMap = this._getSplicedDataMap(model,name,data);
+        //calculate dependent state but do not set it yet
+        let {state, errorList} = this.calculateDependentState(model,false);
+
+        //here we will always set the data whether or not there are any issues in dependents
+        this.setStateAndData(model,state,newDataMap,errorList,true);
     }
 
     /** this method gets the hame the children inherit for the full name. */
@@ -9911,37 +10138,27 @@ class Folder extends DependentMember {
         return true;
     }
 
-    /** Calculate the data.  */
+    /** This usually calculates the value of the member. However, in the case of a folder the value is already updated
+     * once we initialize the impactors. We update the value incrementally so that we do not need to calculate all children
+     * before any data is read from the folder. If we waited, we would get a circular dependecy if we trie to specify the 
+     * name of a member including the path to it. We need to allow this to avoid name colisions at times.  */
     calculate(model) {
-        //make sure impactors are calculated
+        //make sure the data is set in each impactor
         this.initializeImpactors(model);
         
-        //folders work slightly different because of pass thorugh dependencies. We will set the folder data
-        //value regardless of the state, meaning if the state is error or pending or invalid, we still set
-        //the data, along with maintaining the current state.
+        //see note in method description - no calculation is done here. It is done incrementally as children are calculated.
+        //BUT if there was no update of children since prepare for calculate,
+        //we will recalculate state and reset current value.
+        if(this.getState() == apogeeutil.STATE_NONE) {
+            //get new data
+            let data = this.getData();
+            let {state, errorList} = this.calculateDependentState(model,false);
+            if(state == apogeeutil.STATE_NONE) state = apogeeutil.STATE_NORMAL;
 
-        //make an immutable map of the data for each child
-        let childIdMap = this.getChildIdMap();
-        let dataMap = {};
-        for(let name in childIdMap) {
-            let childId = childIdMap[name];
-            let child = model.lookupMemberById(childId);
-            if(child) {
-                dataMap[name] = child.getData();
-            }
+            //here we will always set the data whether or not there are any issues in dependents
+            this.setStateAndData(model,state,data,errorList,true);
         }
-        Object.freeze(dataMap);
 
-        let state = this.getState();
-        if((state != apogeeutil.STATE_ERROR)&&(state != apogeeutil.STATE_PENDING)&&(state != apogeeutil.STATE_INVALID)) {
-            //set the data state if there is no child error or other exceptional case
-            this.setData(dataMap);
-        }
-        else {
-            //if there is a child exceptional case, still set the data for the sake of pass through dependencies
-            this.forceUpdateDataWithoutStateChange(dataMap);
-        }
-        
         //clear calc pending flag
         this.clearCalcPending();
     }
@@ -9949,7 +10166,6 @@ class Folder extends DependentMember {
     /** This method updates the dependencies of any children
      * based on an object being added. */
     updateDependeciesForModelChange(model,additionalUpdatedMembers) {
-
         //update dependencies of this folder
         let oldDependsOnMap = this.getDependsOn();
         let newDependsOnMap = this.calculateDependents(model);
@@ -9978,8 +10194,12 @@ class Folder extends DependentMember {
 
     /** This method creates a member from a json. It should be implemented as a static
      * method in a non-abstract class. */ 
-    static fromJson(parentId,json) {
-        var folder = new Folder(json.name,parentId,null,null,json.specialIdValue);
+    static fromJson(model,json) {
+        var folder = new Folder(json.name,null,null,json.specialIdValue);
+
+        let dataMap = {};
+        Object.freeze(dataMap);
+        folder.setData(model,dataMap);
 
         if(json.childrenNotWriteable) {
             folder.setChildrenWriteable(false);
@@ -10037,6 +10257,27 @@ class Folder extends DependentMember {
         }
         return dependsOnMap;
     }
+
+    /** This does a partial update of the folder value, for a single child */
+    _getSplicedDataMap(model,addOrRemoveName,addData) {
+        //shallow copy old data
+        let oldDataMap = this.getData();
+        let newDataMap = {};
+        Object.assign(newDataMap,oldDataMap);
+
+        //add or update this child data
+        if(addData !== undefined) {
+            newDataMap[addOrRemoveName] = addData;
+        }
+        else {
+            delete newDataMap[addOrRemoveName];
+        }
+        
+        //make this immutable and set it as data for this folder - note we want to set the data whether or not we have an error!
+        Object.freeze(newDataMap);
+        return newDataMap;
+    }
+
 }
 
 //add components to this class                     
@@ -10062,8 +10303,8 @@ Model.addMemberGenerator(Folder.generator);
  * that is expanded into data objects. */
 class FolderFunction extends DependentMember {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
+    constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
 
         //mixin init where needed
         this.contextHolderMixinInit();
@@ -10074,9 +10315,6 @@ class FolderFunction extends DependentMember {
         //==============
         //Initailize these if this is a new instance
         if(!instanceToCopy) {
-            //set to an empty function
-            this.setData(function(){});
-
             //this field is used to disable the calculation of the value of this function
             //It is used in the "virtual model" to prevent any unnecessary downstream calculations
             this.setField("sterilized",false);
@@ -10114,10 +10352,14 @@ class FolderFunction extends DependentMember {
 
     /** This method creates a member from a json. It should be implemented as a static
      * method in a non-abstract class. */ 
-    static fromJson(parentId,json) {
-        let member = new FolderFunction(json.name,parentId,null,null,json.specialIdValue);
+    static fromJson(model,json) {
+        let member = new FolderFunction(json.name,null,null,json.specialIdValue);
 
         //set initial data
+
+        //set to an empty function
+        member.setData(model,function(){});
+
         let initialData = json.updateData;
         let argList = ((initialData)&&(initialData.argList !== undefined)) ? initialData.argList : [];
         member.setField("argList",argList);
@@ -10192,26 +10434,27 @@ class FolderFunction extends DependentMember {
         //This prevents any object which calls this function from updating. It is inended to be 
         //used in the virtual workspace assoicated with this folder function
         if(this.getField("sterilized")) {
-            this.setResultInvalid();
+            this.setResultInvalid(model);
             this.clearCalcPending();
             return;
         }
 
         //make sure the data is set in each impactor
         this.initializeImpactors(model);
+        this.calculateDependentState(model,true);
 
         let state = this.getState();
         if((state != apogeeutil.STATE_ERROR)&&(state != apogeeutil.STATE_PENDING)&&(state != apogeeutil.STATE_INVALID)) {
-            //check for code errors, if so set a data error
+            //calculate folder function is no issue in dependent
             try {
                 var folderFunctionFunction = this.getFolderFunctionFunction(model);
-                this.setData(folderFunctionFunction);
+                this.setData(model,folderFunctionFunction);
             }
             catch(error) {
                 if(error.stack) console.error(error.stack);
                 
                 //error in calculation
-                this.setError(error);
+                this.setError(model,error);
             }
         }
         
@@ -10418,7 +10661,8 @@ class FolderFunction extends DependentMember {
     loadOutputElementId(model,internalFolder) {
         let returnValueString = this.getField("returnValue");
         var returnValueMember = internalFolder.lookupChild(model,returnValueString);
-        return returnValueMember.getId();
+        if(returnValueMember) return returnValueMember.getId();
+        else return null;
     }
 }
 
@@ -10449,11 +10693,8 @@ Model.addMemberGenerator(FolderFunction.generator);
  * is intended to be used as a placeholder when a table generator is not found. */
 class ErrorTable extends Member {
 
-    constructor(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
-        super(name,parentId,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);
-
-        var dummyData = "";
-        this.setData(dummyData);
+    constructor(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue) {
+        super(name,instanceToCopy,keepUpdatedFixed,specialCaseIdValue);    
     }
 
     //------------------------------
@@ -10463,13 +10704,13 @@ class ErrorTable extends Member {
     /** This method extends set data from member. It also
      * freezes the object so it is immutable. (in the future we may
      * consider copying instead, or allowing a choice)*/
-    setData(data) {
+    setData(model,data) {
         
         //make this object immutable
         apogeeutil.deepFreeze(data);
 
         //store the new object
-        return super.setData(data);
+        return super.setData(model,data);
     }
 
     /** This overrides the commplete json to just pass back the entire json sent in. */
@@ -10479,12 +10720,19 @@ class ErrorTable extends Member {
 
     /** This method creates a member from a json. It should be implemented as a static
      * method in a non-abstract class. */ 
-    static fromJson(parentId,json) {
+    static fromJson(model,json) {
         //note - we send in the complete JSON so we can return is on saving
-        let member = new ErrorTable(json.name,parentId,null,null,json.specialIdValue);
+        let member = new ErrorTable(json.name,null,null,json.specialIdValue);
+
+        //this is a bit clumsy, but we don't want to save the "specialIdValue",
+        //so we delete it if it is present
+        //in other tables, it is just not added when we save the object
+        let cleanedJson = apogeeutil.jsonCopy(json);
+        if(cleanedJson.specialIdValue) delete cleanedJson.specialIdValue;
 
         //set the initial data
-        member.setField("completeJson",json);
+        member.setData(model,"");
+        member.setField("completeJson",cleanedJson);
 
         return member;
     }
@@ -10576,6 +10824,7 @@ function createMemberAction(model,actionData) {
 function createMember(model,parent,memberJson) {
 
     let member;
+    let errorMemberCreated = false;
     let actionResult = {};
     actionResult.event = ACTION_EVENT;
     
@@ -10586,62 +10835,62 @@ function createMember(model,parent,memberJson) {
     }
 
     if(generator) {
-        member = generator.createMember(parent.getId(),memberJson); 
-
-        //this codde attempts to write  the member ID into the command that created the member.
-        //We want this in our stored commands so we can use it for "redo" and have a member created
-        //with the same ID. That way subsequent redo commands will correctly access the replacement member.
-        //This doesn't seem like an optimal way to add this info to the input command. 
-        //However, for now this is the earliest peice of code that actually touches each create action.
-        //An alternative is to place a predetermined ID in the command before it is executed, in the 
-        //command code. However, I didn't do that for now because there is not a one-to-one map from 
-        //commands to actions. A single command often creates a hierarchy of members, all of which we 
-        //would want to "modify". 
-        try {
-            if(!memberJson.specialIdValue) {
-                memberJson.specialIdValue = member.getId();
-            }
-        }
-        catch(error) {
-            //we couldn't write into the command. It may be immutable
-            //downstream redo commands won't work, but we'll cleanly handle that case then
-            //with a failed redo.
-        }
-
-        //pass this child to the parent
-        parent.addChild(model,member);
-
-        //register member with model
-        model.registerMember(member);
-
-        //set action flags for successfull new member
-        actionResult.updateModelDependencies = true;
-        if((member.hasCode)&&(member.hasCode())) {
-            actionResult.recalculateMember = true;
-        }
-        else {
-            actionResult.recalculateDependsOnMembers = true;
-        }
-
-        //instantiate children if there are any
-        if(memberJson.children) {
-            actionResult.childActionResults = [];
-            for(let childName in memberJson.children) {
-                let childJson = memberJson.children[childName];
-                let childActionResult = createMember(model,member,childJson);
-                actionResult.childActionResults.push(childActionResult);
-            }
-        }
+        member = generator.createMember(model,memberJson); 
     }
     else {
         //type not found! - create a dummy object and add an error to it
         let errorTableGenerator = Model.getMemberGenerator("apogee.ErrorMember");
         member = errorTableGenerator.createMember(parent,memberJson);
-        member.setError("Member type not found: " + memberJson.type);
-        
-        //store an error message, but this still counts as command done.
-        actionResult.errorMsg = "Error creating member: member type not found: " + memberJson.type;
+        member.setError(model,"Member type not found: " + memberJson.type);
+        errorMemberCreated = true;
     }
+
+    //this codde attempts to write  the member ID into the command that created the member.
+    //We want this in our stored commands so we can use it for "redo" and have a member created
+    //with the same ID. That way subsequent redo commands will correctly access the replacement member.
+    //This doesn't seem like an optimal way to add this info to the input command. 
+    //However, for now this is the earliest peice of code that actually touches each create action.
+    //An alternative is to place a predetermined ID in the command before it is executed, in the 
+    //command code. However, I didn't do that for now because there is not a one-to-one map from 
+    //commands to actions. A single command often creates a hierarchy of members, all of which we 
+    //would want to "modify". 
+    try {
+        if(!memberJson.specialIdValue) {
+            memberJson.specialIdValue = member.getId();
+        }
+    }
+    catch(error) {
+        //we couldn't write into the command. It may be immutable
+        //downstream redo commands won't work, but we'll cleanly handle that case then
+        //with a failed redo.
+    }
+
+    //register member with model
+    model.registerMember(member);
+
+    //pass this child to the parent
+    member.setParentId(parent.getId());
+    parent.addChild(model,member);
+
+    //set action flags for successfull new member
+    actionResult.updateModelDependencies = true;
+    if((member.hasCode)&&(member.hasCode())) {
+        actionResult.recalculateMember = true;
+    }
+    else {
+        actionResult.recalculateDependsOnMembers = true;
+    }
+
+    //instantiate children if there are any
+    if((memberJson.children)&&(!errorMemberCreated)) {
+        actionResult.childActionResults = [];
+        for(let childName in memberJson.children) {
+            let childJson = memberJson.children[childName];
+            let childActionResult = createMember(model,member,childJson);
+            actionResult.childActionResults.push(childActionResult);
+        }
+    }
+    
 
     actionResult.member = member;
     actionResult.actionDone = true;
@@ -10764,11 +11013,11 @@ function updateData(model,actionData) {
     }
 
     //apply the data
-    member.applyData(data);
+    member.applyData(model,data);
 
     //if the data is a promise, we must also initiate the asynchronous setting of the data
     if((data)&&(data instanceof Promise)) {
-        member.applyAsynchData(model,data);
+        member.applyAsynchFutureValue(model,data);
     }
     
     actionResult.actionDone = true;
@@ -11191,7 +11440,10 @@ var apogeeCoreLib = /*#__PURE__*/Object.freeze({
     Model: Model,
     doAction: doAction,
     validateTableName: validateTableName,
-    Messenger: Messenger
+    Messenger: Messenger,
+    defineHardcodedJsonTable: defineHardcodedJsonTable,
+    defineHardcodedFunctionTable: defineHardcodedFunctionTable,
+    getSerializedHardcodedTable: getSerializedHardcodedTable
 });
 
 exports.apogee = apogeeCoreLib;
