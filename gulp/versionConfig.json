@@ -1,4 +1,6 @@
 {
     "OFFICIAL_RELEASE": false,
-    "VERSION_NUMBER": "1.2.1-p1"
+    "VERSION_NUMBER": "1.2.2-p1",
+    "APOGEE_CORE_VERSION_NUMBER": "1.2.1",
+    "APOGEE_CORE_IS_RELEASE": true
 }

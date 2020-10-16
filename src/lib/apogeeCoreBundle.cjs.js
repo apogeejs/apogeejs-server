@@ -1,5 +1,5 @@
 // File: apogeeCoreBundle.cjs.js
-// Version: 1.2.0
+// Version: 1.2.1
 // Copyright (c) 2016-2020 Dave Sutter
 // License: MIT
 
