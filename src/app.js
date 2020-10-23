@@ -7,6 +7,12 @@ const {ApogeeManager} = require("./ApogeeManager");
 const FILE_ROOT = "/file";
 const APOGEE_DESCRIPTOR_LOCATION = "deploy/descriptor.json";
 
+//allow no user interaction in standard alert/confirm
+//__globals__.apogeeLog = (msg) => console.log(message);
+__globals__.apogeeUserAlert = (msg) => console.log(msg);
+__globals__.apogeeUserConfirm = (msg,okText,cancelText,okAction,cancelAction,defaultToOk) => defaultToOk ? okAction : cancelAction;
+__globals__.apogeeUserConfirmSynchronous = (msg,okText,cancelText,defaultToOk) => defaultToOk;
+
 //===========================
 // Set up handlers
 //===========================
