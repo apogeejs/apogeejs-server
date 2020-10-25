@@ -3,9 +3,14 @@ require("./lib/debugHook.js");
 const express = require('express');
 const bodyParser = require('body-parser');
 const {ApogeeManager} = require("./ApogeeManager");
+const {apogeeutil,apogee} = require('./lib/apogeeCoreBundle.cjs.js');
 
 const FILE_ROOT = "/file";
 const APOGEE_DESCRIPTOR_LOCATION = "deploy/descriptor.json";
+
+//libraries
+__globals__.apogeeutil = apogeeutil;
+__globals__.apogee = apogee;
 
 //allow no user interaction in standard alert/confirm
 //__globals__.apogeeLog = (msg) => console.log(message);

@@ -1,5 +1,5 @@
 // File: apogeeCoreBundle.cjs.js
-// Version: 1.2.1
+// Version: 1.2.2
 // Copyright (c) 2016-2020 Dave Sutter
 // License: MIT
 
@@ -1735,8 +1735,8 @@ function doAction(model,actionData) {
         var runQueuedAction = true;
 
         if(model.checkConsecutiveQueuedActionLimitExceeded()) {
-            //ask user if about continueing
-            var doContinue = confirm("The calculation is taking a long time. Continue?");
+            //ask user if about continueing - THIS MUST BE SYNCHRONOUS FOR NOW. Default to cancel calculation
+            var doContinue = apogeeUserConfirmSynchronous("The calculation is taking a long time: Continue?","Continue","Cancel",false);
             if(!doContinue) {
                 let changeResult = {};
                 changeResult.actionDone = false;
@@ -8385,10 +8385,10 @@ function processCode(argList,functionBody,supplementalCode,codeLabel) {
         return compiledInfo;
     }
 
-    //create and execute the generator function to get the member function generator
-    //and the memberFunctionContextInitializer
-    var generatorFunction = createGeneratorFunction(compiledInfo.varInfo, combinedFunctionBody);
     try {
+        //create and execute the generator function to get the member function generator
+        //and the memberFunctionContextInitializer
+        var generatorFunction = createGeneratorFunction(compiledInfo.varInfo, combinedFunctionBody);
         //get the generated fucntion
         var generatedFunctions = generatorFunction();
         compiledInfo.memberFunctionGenerator = generatedFunctions.memberGenerator;
@@ -9520,7 +9520,7 @@ class CodeableMember extends DependentMember {
             }
             else if(state == apogeeutil.STATE_PENDING) {
                 //pending value - we can't do anything with this
-                alert("There is a pending result in a field being saved. This may not be saved properly.");
+                apogeeUserAlert("There is a pending result in a field being saved. This may not be saved properly.");
                 updateData.data = "<unknown pending value>";
             }
             else if(state == apogeeutil.STATE_ERROR) {
@@ -10110,7 +10110,7 @@ class Folder extends DependentMember {
         let childIdMap = this.getChildIdMap();
         let name = child.getName();
         if(childIdMap[name] != childId) {
-            alert("Error - the table " + childId + " is not registered in the parent under the name "  + name);
+            apogeeUserAlert("Error - the table " + childId + " is not registered in the parent under the name "  + name);
             return;
         }
 
@@ -10324,7 +10324,7 @@ class FolderFunction extends DependentMember {
         this.temporaryVirtualModelRunContext = {
             doAsynchActionCommand: function(modelId,actionData) {
                 let msg = "NOT IPLEMENTED: Asynchronous actions in folder function!";
-                alert(msg);
+                apogeeUserAlert(msg);
                 throw new Error(msg);
             }
         };
