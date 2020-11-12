@@ -50,8 +50,8 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
             //get the action to load the inputs
             let inputAction = this._getInputAction(endpointInfo,inputDataMap);
 
-            //run action with: invalidOk = false and errorMsgPrefix
-            this.runActionOnModel(inputAction,false,"Error executing request: ");
+            //run action with: invalidOk = true and errorMsgPrefix
+            this.runActionOnModel(inputAction,true,"Error executing request: ");
         }
         catch(error) {
             this._doErrorResponse("Unknown error: " + error.message);

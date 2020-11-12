@@ -1,5 +1,5 @@
 // File: apogeeCoreBundle.cjs.js
-// Version: 1.2.3
+// Version: 1.2.4
 // Copyright (c) 2016-2020 Dave Sutter
 // License: MIT
 
@@ -8974,7 +8974,7 @@ class Member extends FieldObject {
      * The data value will be applied regardless of the state. The error list is applied only if the state is ERROR. */
     setStateAndData(model,state,data,errorList) {
         //set data as specified
-        if(data == undefined) {
+        if(data === undefined) {
             this.clearField("data");
         }
         else {
@@ -9554,7 +9554,7 @@ class CodeableMember extends DependentMember {
             if(initialData.errorList) {
                 this.setErrors(model,initialData.errorList);
             }
-            else if(initialData.invalidError) {
+            else if(initialData.invalidValue) {
                 this.setResultInvalid(model);
             }
             else {
@@ -9775,7 +9775,13 @@ class JsonTable extends CodeableMember {
         let initialData = {};
         Object.assign(initialData,json.updateData);
 
-        if((!initialData.functionBody)&&(!initialData.data)) initialData.data = "";
+        //if no value is set, set to an empty string
+        if(
+            (!initialData.functionBody) && //no function body (anything falsy is an invalid function)
+            (initialData.data === undefined) && //no data value set
+            (!initialData.errorList) && //no error list (any error list will set the error state)
+            (initialData.invalidValue !== true) //not invalid value
+        ) initialData.data = "";
 
         member.setUpdateData(model,initialData);
 
