@@ -18,6 +18,12 @@ __globals__.apogeeUserAlert = (msg) => console.log(msg);
 __globals__.apogeeUserConfirm = (msg,okText,cancelText,okAction,cancelAction,defaultToOk) => defaultToOk ? okAction : cancelAction;
 __globals__.apogeeUserConfirmSynchronous = (msg,okText,cancelText,defaultToOk) => defaultToOk;
 
+//here we can define anything global variables we want that are not in globals
+//in this environment - _require_ is not in globals!
+__globals__.__apogee_globals__ = {
+    "require": require
+}
+
 //===========================
 // Set up handlers
 //===========================

@@ -26,7 +26,7 @@ class ActionRunner {
     /** This gets the model run context that should be used for the model in this action runner. */
     getModelRunContext() {
         let modelRunContext = {};
-        modelRunContext.doAsynchActionCommand = (modelId,action) => this.runActionOnModel(action);
+        modelRunContext.doAsynchActionCommand = (modelId,action) => this.runActionOnModel(action,true,"Internal Command:");
         return modelRunContext;
     }
 

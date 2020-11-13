@@ -20,5 +20,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/sutter-dave/ApogeeServer.git"
-  }
+  },
+  "type": "commonjs"
 }

@@ -1,5 +1,5 @@
 // File: apogeeCoreBundle.cjs.js
-// Version: 1.2.4
+// Version: 1.2.4-MODIFIED
 // Copyright (c) 2016-2020 Dave Sutter
 // License: MIT
 
@@ -735,7 +735,7 @@ ContextManager.prototype.getMember = function(model,pathArray,optionalParentMemb
 /** Check each entry of the context list to see if the data is present. */
 ContextManager.prototype.lookupValue = function(model,varName) {
     var data;
-    let childFound = false;
+    let valueFound = false;
     for(var i = 0; i < this.contextList.length; i++) {
         var entry = this.contextList[i];        
         if(entry.contextHolderAsParent) {
@@ -743,11 +743,11 @@ ContextManager.prototype.lookupValue = function(model,varName) {
             var child = this.contextHolder.lookupChild(model,varName);
             if(child) {
                 data = child.getData();
-                childFound = true;
+                valueFound = true;
             }
         }
         
-        if(childFound) return data;
+        if(valueFound) return data;
     }
 
     if(this.contextHolder.getIsScopeRoot()) {
@@ -789,6 +789,14 @@ ContextManager.prototype.lookupMember = function(model,pathArray,index,optionalP
 };
 
 ContextManager.prototype.getValueFromGlobals = function(varName) {
+    ///////////////////////////////////
+    //ATLERNATE KLUDGE
+    if(__apogee_globals__) {
+        let value = __apogee_globals__[varName];
+        if(value !== undefined) return value; 
+    }
+    /////////////////////////////////////
+
     //for now don't do any filtering
     //in the future we may want to do something so people don't deine their own globals - TBD
     return __globals__[varName];
