@@ -1,5 +1,5 @@
 // File: apogeeCoreBundle.cjs.js
-// Version: 1.2.4-MODIFIED
+// Version: 1.2.5
 // Copyright (c) 2016-2020 Dave Sutter
 // License: MIT
 
@@ -328,7 +328,7 @@ apogeeutil.callbackRequest = function(url,onSuccess,onError,options) {
     xmlhttp.onreadystatechange=function() {
         var msg;
         if(xmlhttp.readyState==4) {
-            if(xmlhttp.status==200) {
+            if((xmlhttp.status>=200)&&(xmlhttp.status<=399)) {
                 try {
                     onSuccess(xmlhttp.responseText);
                 }
@@ -386,6 +386,11 @@ apogeeutil.textRequest = function(url,options) {
  */
 apogeeutil.jsonRequest = function(url,options) {
     return apogeeutil.textRequest(url,options).then(JSON.parse);
+};
+
+/** This method returns a random string which should be unique. */
+apogeeutil.getUniqueString = function() {
+    return Math.random().toString(36).substring(2, 15);
 };
 
 /* 
@@ -735,7 +740,7 @@ ContextManager.prototype.getMember = function(model,pathArray,optionalParentMemb
 /** Check each entry of the context list to see if the data is present. */
 ContextManager.prototype.lookupValue = function(model,varName) {
     var data;
-    let valueFound = false;
+    let childFound = false;
     for(var i = 0; i < this.contextList.length; i++) {
         var entry = this.contextList[i];        
         if(entry.contextHolderAsParent) {
@@ -743,11 +748,11 @@ ContextManager.prototype.lookupValue = function(model,varName) {
             var child = this.contextHolder.lookupChild(model,varName);
             if(child) {
                 data = child.getData();
-                valueFound = true;
+                childFound = true;
             }
         }
         
-        if(valueFound) return data;
+        if(childFound) return data;
     }
 
     if(this.contextHolder.getIsScopeRoot()) {
@@ -790,9 +795,12 @@ ContextManager.prototype.lookupMember = function(model,pathArray,index,optionalP
 
 ContextManager.prototype.getValueFromGlobals = function(varName) {
     ///////////////////////////////////
-    //ATLERNATE KLUDGE
-    if(__apogee_globals__) {
-        let value = __apogee_globals__[varName];
+    //CLUDGE - Here we can added additional values that are not in globals
+    //This is here because, for now, on the server require did not appear in globals, so we put it here.
+    //I think this is because it is only exposed in certain places, possibly related to their es module
+    //implementation.  
+    if(__globals__.__apogee_globals__) {
+        let value = __globals__.__apogee_globals__[varName];
         if(value !== undefined) return value; 
     }
     /////////////////////////////////////
