@@ -78,7 +78,7 @@ class WorkspaceManager extends ActionRunner {
             this.workspaceReady = true;
         }
         catch(error) {
-            _handleSetupError(error.message);
+            this._handleSetupError(error.message);
         }
     }
 
@@ -201,6 +201,10 @@ class WorkspaceManager extends ActionRunner {
             //get the return value member id, if applicable
             if(endpointConfig.output) {
                 endpointInfo.outputId = this._getMemberId(endpointConfig.output);
+            }
+
+            if(endpointConfig.headerKeys) {
+                endpointInfo.headerKeys = endpointConfig.headerKeys
             }
 
             this.endpointInfoMap[endpointName] = endpointInfo;

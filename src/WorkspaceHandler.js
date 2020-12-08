@@ -110,6 +110,18 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
             inputDataMap.queryParams = request.query; 
         }
 
+        //this gets the requested header parameters
+        if((endpointInfo.inputIds.headers)&&(endpointInfo.headerKeys)) {
+            let headerData = {};
+            endpointInfo.headerKeys.forEach(headerKey => { 
+                let value = request.get(headerKey);
+                if(value != undefined) {
+                    headerData[headerKey] = value;
+                }
+            }); 
+            inputDataMap.headers = headerData; 
+        }
+
         //get any input trigger table data if applicable
         if(endpointInfo.inputIds.trigger) {
             inputDataMap.trigger = endpointInfo.inputTriggerValue ? endpointInfo.inputTriggerValue : true;

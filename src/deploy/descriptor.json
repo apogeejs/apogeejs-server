@@ -43,9 +43,12 @@
 			"endpoints": {
 				"basic": {
 					"inputs": {
-						"body": "main.input"
+						"body": "main.body",
+						"queryParams": "main.queryParams",
+						"headers": "main.headers"
 					},
-					"output": "main.output"
+					"output": "main.output",
+					"headerKeys": ["Content-Type","XXX","Accept","User-Agent"]
 
 				}
 			}
