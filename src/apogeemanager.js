@@ -1,4 +1,6 @@
+const { timeStamp } = require('console');
 var fs = require('fs');
+const path = require('path');
 const { WorkspaceManager } = require('./WorkspaceManager');
 
 /** This class initializes and shuts down the apogee workspace listeners. */
@@ -15,10 +17,12 @@ class ApogeeManager {
         this.descriptor = null;
         this.settings = null;
         this.handlerStubs = {};
+        this.serverDir = null;
     }
     
     /** This method initializes the handler with the descriptor json. */
-    getInitPromise(app,descriptorFileLocation) {
+    getInitPromise(app,serverDir,descriptorFileRelative) {
+        this.serverDir = serverDir;
 
         var initPromise = new Promise( (resolve,reject) => {
             //callback for the descriptor
@@ -44,7 +48,8 @@ class ApogeeManager {
             
             //read the descriptor
             try {
-                fs.readFile(descriptorFileLocation,onDescriptorRead);
+                let descriptorFileAbsolute = path.join(this.serverDir,descriptorFileRelative)
+                fs.readFile(descriptorFileAbsolute,onDescriptorRead);
             }
             catch(error) {
                 let errorMsg = "Error reading descriptor";
@@ -95,6 +100,8 @@ class ApogeeManager {
      * provided by the workspace descriptor. */
     _loadSettings(workspaceInfo) {
         var settings = Object.assign({},ApogeeManager.GLOBAL_SETTINGS);
+
+        settings.serverDir = this.serverDir;
         
         if(workspaceInfo.settings) {
             settings = Object.assign(settings,workspaceInfo.settings);

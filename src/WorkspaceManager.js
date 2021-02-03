@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const { ActionRunner } = require('./ActionRunner');
 const { WorkspaceHandler } = require('./WorkspaceHandler');
 const { apogee } = require('./lib/apogeeCoreBundle.cjs.js');
@@ -52,7 +53,8 @@ class WorkspaceManager extends ActionRunner {
         }
 
         //load the workspace json
-        fs.readFile(this.workspaceConfig.source, (err,workspaceText) => this._onWorkspaceRead(err,workspaceText));  //load from source  
+        let sourcePath = path.join(this.settings.serverDir,this.workspaceConfig.source);
+        fs.readFile(sourcePath, (err,workspaceText) => this._onWorkspaceRead(err,workspaceText));  //load from source  
     }
     
     shutdown() {
