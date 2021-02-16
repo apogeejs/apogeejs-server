@@ -7,7 +7,8 @@ var fs = require('fs');
 const bodyParser = require('body-parser');
 const path = require('path')
 const {ApogeeManager} = require("./ApogeeManager");
-const {apogeeutil,apogee} = require('./lib/apogeeCoreBundle.cjs.js');
+const apogeeutil = require('apogeejs-util-lib');
+const apogee = require('apogeejs-model-lib');
 
 //libraries
 __globals__.apogeeutil = apogeeutil;

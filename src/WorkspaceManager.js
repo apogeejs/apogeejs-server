@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { ActionRunner } = require('./ActionRunner');
 const { WorkspaceHandler } = require('./WorkspaceHandler');
-const { apogee } = require('./lib/apogeeCoreBundle.cjs.js');
+const apogee = require('apogeejs-model-lib');
 const Model = apogee.Model;
 //-------------------------------
 //debug
