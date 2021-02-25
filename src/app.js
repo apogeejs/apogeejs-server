@@ -8,10 +8,12 @@ const bodyParser = require('body-parser');
 const path = require('path')
 const {ApogeeManager} = require("./ApogeeManager");
 const apogeeutil = require('apogeejs-util-lib');
+const apogeebase = require('apogeejs-base-lib');
 const apogee = require('apogeejs-model-lib');
 
 //libraries
 __globals__.apogeeutil = apogeeutil;
+__globals__.apogeebase = apogeebase;
 __globals__.apogee = apogee;
 
 //allow no user interaction in standard alert/confirm

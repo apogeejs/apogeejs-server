@@ -1,6 +1,6 @@
 {
   "name": "apogeejs-server",
-  "version": "0.0.0-pAPOGEE",
+  "version": "[RELEASE_VERSION]",
   "description": "Apogee server",
   "homepage": "https://apogeejs.com",
   "license": "MIT",
@@ -15,14 +15,14 @@
     "express": "~4.17.1",
     "esprima": "~2.7.2",
     "mysql": "~2.17.1",
-    "apogeejs-util-lib": "file:../test-node-libs/apogeejs-util-lib/v2.0.0-p1",
-    "apogeejs-base-lib": "file:../test-node-libs/apogeejs-base-lib/v2.0.0-p1",
-    "apogeejs-model-lib": "file:../test-node-libs/apogeejs-model-lib/v2.0.0-p1"
+    "apogeejs-util-lib": "[APOGEE_UTIL_VERSION]",
+    "apogeejs-base-lib": "[APOGEE_BASE_VERSION]",
+    "apogeejs-model-lib": "[APOGEE_MODEL_VERSION]"
   },
   "author": "Dave Sutter",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sutter-dave/ApogeeServer.git"
+    "url": "https://github.com/sutter-dave/apogeejs-server.git"
   },
   "type": "commonjs",
   "preferGlobal": true,

@@ -1,0 +1,60 @@
+{
+    "repoName": "apogeejs-server",
+
+    "npmModule": {
+        "taskList": [
+            {
+                "type": "copyAndReplace",
+                "srcFileUrl": "/apogeejs-electron-node/package.json",
+                "replacementList": [
+                    {
+                        "marker": "[RELEASE_VERSION]",
+                        "name": "RELEASE_VERSION"
+                    },
+                    {
+                        "marker": "[APOGEE_UTIL_VERSION]",
+                        "name": "APOGEE_UTIL_VERSION"
+                    },
+                    {
+                        "marker": "[APOGEE_BASE_VERSION]",
+                        "name": "APOGEE_BASE_VERSION"
+                    },
+                    {
+                        "marker": "[APOGEE_MODEL_VERSION]",
+                        "name": "APOGEE_MODEL_VERSION"
+                    }
+                ]
+            },
+            {
+                "type": "copyFileList",
+                "srcFileUrlList": [
+                    "/apogeejs-server/deploy/**/*"
+                ],
+                "childFolder": "deploy"
+            },
+            {
+                "type": "copyFileList",
+                "srcFileUrlList": [
+                    "/apogeejs-server/file/**/*"
+                ],
+                "childFolder": "file"
+            },
+            {
+                "type": "copyFileList",
+                "srcFileUrlList": [
+                    "/apogeejs-server/extras/**/*"
+                ],
+                "childFolder": "extras"
+            },
+            {
+                "type": "copyFileList",
+                "srcFileUrlList": [
+                    "/apogeejs-model-lib/src/debugHook.js",
+                    "/apogeejs-model-lib/src/nodeGlobals.js",
+                    "/apogeejs-server/src/**/*"
+                ],
+                "childFolder": "src"
+            }
+        ]
+    }
+}

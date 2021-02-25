@@ -1,0 +1,13 @@
+{
+    "version": "2.0.0-p1",
+    "isProductionRelease": false,
+    "buildInfoUrl": "/apogeejs-server/buildInfo.json", 
+    "pathMapping": {
+    },
+    "replacementValues": {
+        "RELEASE_VERSION": "2.0.0-p1",
+        "APOGEE_UTIL_VERSION": "file:./apogeejs-util-lib",
+        "APOGEE_BASE_VERSION": "file:./apogeejs-base-lib",
+        "APOGEE_MODEL_VERSION": "file:./apogeejs-model-lib"
+    }
+}
