@@ -15,9 +15,9 @@
     "express": "~4.17.1",
     "esprima": "~2.7.2",
     "mysql": "~2.17.1",
-    "apogeejs-util-lib": "[APOGEE_UTIL_VERSION]",
-    "apogeejs-base-lib": "[APOGEE_BASE_VERSION]",
-    "apogeejs-model-lib": "[APOGEE_MODEL_VERSION]"
+    "apogeejs-util-lib": "[APOGEE_UTIL_DEP_VERSION]",
+    "apogeejs-base-lib": "[APOGEE_BASE_DEP_VERSION]",
+    "apogeejs-model-lib": "[APOGEE_MODEL_DEP_VERSION]"
   },
   "author": "Dave Sutter",
   "repository": {

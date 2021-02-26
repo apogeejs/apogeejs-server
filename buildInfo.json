@@ -9,19 +9,23 @@
                 "replacementList": [
                     {
                         "marker": "[RELEASE_VERSION]",
-                        "libVersion": "this"
+                        "lib": "this",
+                        "type": "version"
                     },
                     {
-                        "marker": "[APOGEE_UTIL_VERSION]",
-                        "libVersion": "apogeejs-util-lib"
+                        "marker": "[APOGEE_UTIL_DEP_VERSION]",
+                        "valueName": "APOGEE_UTIL_DEP_VERSION",
+                        "type": "additionalValue"
                     },
                     {
-                        "marker": "[APOGEE_BASE_VERSION]",
-                        "libVersion": "apogeejs-base-lib"
+                        "marker": "[APOGEE_BASE_DEP_VERSION]",
+                        "valueName": "APOGEE_BASE_DEP_VERSION",
+                        "type": "additionalValue"
                     },
                     {
-                        "marker": "[APOGEE_MODEL_VERSION]",
-                        "libVersion": "apogeejs-model-lib"
+                        "marker": "[APOGEE_MODEL_DEP_VERSION]",
+                        "valueName": "APOGEE_MODEL_DEP_VERSION",
+                        "type": "additionalValue"
                     }
                 ]
             },

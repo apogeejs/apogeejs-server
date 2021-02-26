@@ -6,5 +6,10 @@
         "apogeejs-base-lib": {"version": "2.0.0-p1", "isProductionRelease": false},
         "apogeejs-util-lib": {"version": "2.0.0-p1", "isProductionRelease": false},
         "apogeejs-model-lib": {"version": "2.0.0-p1", "isProductionRelease": false}
+    },
+    "additionalValues": {
+        "APOGEE_BASE_DEP_VERSION": "./apogeejs-base-lib",
+        "APOGEE_UTIL_DEP_VERSION": "./apogeejs-util-lib",
+        "APOGEE_MODEL_DEP_VERSION": "./apogeejs-model-lib"
     }
 }

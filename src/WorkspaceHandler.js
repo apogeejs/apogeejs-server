@@ -1,4 +1,4 @@
-require("./lib/nodeGlobals.js");
+require("./nodeGlobals.js");
 const { ActionRunner } = require('./ActionRunner');
 
 //------------------------

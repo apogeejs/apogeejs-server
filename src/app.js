@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-require("./lib/nodeGlobals.js");
-require("./lib/debugHook.js");
+require("./nodeGlobals.js");
+require("./debugHook.js");
 const express = require('express');
 var fs = require('fs');
 const bodyParser = require('body-parser');
@@ -27,9 +27,9 @@ __globals__.__apogee_globals__ = {
     "require": require
 }
 
-let installDir = path.dirname(process.argv[1]);
+let thisFileDir = path.dirname(process.argv[1]);
 const DEFAULT_CONFIG_JSON = {
-    serverDirectory: installDir,
+    serverDirectory: path.join(thisFileDir,".."),
     fileFolder: "file",
     fileUrlPrefix: "/file",
     descriptorPath: "deploy/descriptor.json",
