@@ -5,23 +5,23 @@
         "taskList": [
             {
                 "type": "copyAndReplace",
-                "srcFileUrl": "/apogeejs-electron-node/package.json",
+                "srcFileUrl": "/apogeejs-server/package.json",
                 "replacementList": [
                     {
                         "marker": "[RELEASE_VERSION]",
-                        "name": "RELEASE_VERSION"
+                        "libVersion": "this"
                     },
                     {
                         "marker": "[APOGEE_UTIL_VERSION]",
-                        "name": "APOGEE_UTIL_VERSION"
+                        "libVersion": "apogeejs-util-lib"
                     },
                     {
                         "marker": "[APOGEE_BASE_VERSION]",
-                        "name": "APOGEE_BASE_VERSION"
+                        "libVersion": "apogeejs-base-lib"
                     },
                     {
                         "marker": "[APOGEE_MODEL_VERSION]",
-                        "name": "APOGEE_MODEL_VERSION"
+                        "libVersion": "apogeejs-model-lib"
                     }
                 ]
             },
