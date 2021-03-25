@@ -14,18 +14,18 @@
                     },
                     {
                         "marker": "[APOGEE_UTIL_DEP_VERSION]",
-                        "valueName": "APOGEE_UTIL_DEP_VERSION",
-                        "type": "additionalValue"
+                        "lib": "apogeejs-util-lib",
+                        "type": "npmVersion"
                     },
                     {
                         "marker": "[APOGEE_BASE_DEP_VERSION]",
-                        "valueName": "APOGEE_BASE_DEP_VERSION",
-                        "type": "additionalValue"
+                        "lib": "apogeejs-base-lib",
+                        "type": "npmVersion"
                     },
                     {
                         "marker": "[APOGEE_MODEL_DEP_VERSION]",
-                        "valueName": "APOGEE_MODEL_DEP_VERSION",
-                        "type": "additionalValue"
+                        "lib": "apogeejs-model-lib",
+                        "type": "npmVersion"
                     }
                 ]
             },
