@@ -1,64 +1,83 @@
 {
     "repoName": "apogeejs-server",
-
-    "npmModule": {
-        "taskList": [
-            {
-                "type": "copyAndReplace",
-                "srcFileUrl": "/apogeejs-server/package.json",
-                "replacementList": [
-                    {
-                        "marker": "[RELEASE_VERSION]",
-                        "lib": "this",
-                        "type": "version"
-                    },
-                    {
-                        "marker": "[APOGEE_UTIL_DEP_VERSION]",
-                        "lib": "apogeejs-util-lib",
-                        "type": "npmVersion"
-                    },
-                    {
-                        "marker": "[APOGEE_BASE_DEP_VERSION]",
-                        "lib": "apogeejs-base-lib",
-                        "type": "npmVersion"
-                    },
-                    {
-                        "marker": "[APOGEE_MODEL_DEP_VERSION]",
-                        "lib": "apogeejs-model-lib",
-                        "type": "npmVersion"
-                    }
-                ]
-            },
-            {
-                "type": "copyFileList",
-                "srcFileUrlList": [
-                    "/apogeejs-server/deploy/**/*"
-                ],
-                "childFolder": "deploy"
-            },
-            {
-                "type": "copyFileList",
-                "srcFileUrlList": [
-                    "/apogeejs-server/file/**/*"
-                ],
-                "childFolder": "file"
-            },
-            {
-                "type": "copyFileList",
-                "srcFileUrlList": [
-                    "/apogeejs-server/extras/**/*"
-                ],
-                "childFolder": "extras"
-            },
-            {
-                "type": "copyFileList",
-                "srcFileUrlList": [
-                    "/apogeejs-model-lib/src/debugHook.js",
-                    "/apogeejs-model-lib/src/nodeGlobals.js",
-                    "/apogeejs-server/src/**/*"
-                ],
-                "childFolder": "src"
+    "taskList": [
+        {
+            "type": "copyFileList",
+            "srcFileUrlList": [
+                "/apogeejs-server/versionInfo.json"
+            ]
+        },
+        {
+            "type": "copyAndReplace",
+            "srcFileUrl": "/apogeejs-server/package.json",
+            "replacementList": [
+                {
+                    "marker": "2.0.0-DEV-VERSION",
+                    "lib": "this",
+                    "type": "version"
+                }
+            ]
+        },
+        {
+            "type": "copyFileList",
+            "srcFileUrlList": [
+                "/apogeejs-server/src/**/*"
+            ],
+            "childFolder": "src"
+        },
+        {
+            "type": "copyFileList",
+            "srcFileUrlList": [
+                "/apogeejs-server/deploy/**/*"
+            ],
+            "childFolder": "deploy"
+        },
+        {
+            "type": "copyFileList",
+            "srcFileUrlList": [
+                "/apogeejs-server/extras/**/*"
+            ],
+            "childFolder": "extras"
+        },
+        {
+            "type": "copyFileList",
+            "srcFileUrlList": [
+                "/apogeejs-server/file/**/*"
+            ],
+            "childFolder": "file"
+        },
+        {
+            "type": "copyFileList",
+            "srcFileUrlList": [
+                "/apogeejs-model-lib/src/debugHook.js",
+                "/apogeejs-model-lib/src/nodeGlobals.js"
+            ],
+            "childFolder": "apogeejs-model-lib/src"
+        },
+        {
+            "type": "packageLib",
+            "format": "cjs",
+            "sourceFileUrl": "/apogeejs-model-lib/src/apogeeModelLib.js",
+            "outputFileName": "apogeejs-model-lib.js",
+            "childFolder": "apogeejs-model-lib/src",
+            "externalLibMapping": {
+                "/apogeejs-admin/ext/esprima/esprima_2.7.3/esprima.es.js": "esprima"
             }
-        ]
-    }
+        },
+        {
+            "type": "packageLib",
+            "format": "cjs",
+            "sourceFileUrl": "/apogeejs-base-lib/src/apogeeBaseLib.js",
+            "outputFileName": "apogeejs-base-lib.js",
+            "childFolder": "apogeejs-base-lib/src"
+        },
+        {
+            "type": "packageLib",
+            "format": "cjs",
+            "sourceFileUrl": "/apogeejs-util-lib/src/apogeeUtilLib.js",
+            "outputFileName": "apogeejs-util-lib.js",
+            "childFolder": "apogeejs-util-lib/src"
+        }
+    ]
+
 }

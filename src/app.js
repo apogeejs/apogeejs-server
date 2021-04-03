@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
-require("./nodeGlobals.js");
-require("./debugHook.js");
+require("../apogeejs-model-lib/src/nodeGlobals.js");
+require("../apogeejs-model-lib/src/debugHook.js");
 const express = require('express');
 var fs = require('fs');
 const bodyParser = require('body-parser');
 const path = require('path')
 const {ApogeeManager} = require("./ApogeeManager");
-const apogeeutil = require('apogeejs-util-lib');
-const apogeebase = require('apogeejs-base-lib');
-const apogee = require('apogeejs-model-lib');
+const apogeeutil = require('../apogeejs-util-lib/src/apogeejs-util-lib.js');
+const apogeebase = require('../apogeejs-base-lib/src/apogeejs-base-lib.js');
+const apogee = require('../apogeejs-model-lib/src/apogeejs-model-lib.js');
 
 //libraries
 __globals__.apogeeutil = apogeeutil;

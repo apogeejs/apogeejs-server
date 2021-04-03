@@ -1,5 +1,5 @@
-const apogeeutil = require('apogeejs-util-lib');
-const apogee = require('apogeejs-model-lib');
+const apogeeutil = require('../apogeejs-util-lib/src/apogeejs-util-lib.js');
+const apogee = require('../apogeejs-model-lib/src/apogeejs-model-lib.js');
 const doAction = apogee.doAction;
 
 /** This is a base class that executes a synchronous or asynchronous action on a model. */

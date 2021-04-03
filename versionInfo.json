@@ -1,6 +1,7 @@
 {
     "version": "2.0.0-p1",
     "isProductionRelease": false,
+    "suppressReleasePresentCheck": true,
     "buildInfoUrl": "/apogeejs-server/buildInfo.json", 
     "dependentVersions": {
         "apogeejs-base-lib": {"version": "2.0.0-p1", "isProductionRelease": false},

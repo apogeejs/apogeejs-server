@@ -1,4 +1,4 @@
-require("./nodeGlobals.js");
+require('../apogeejs-model-lib/src/nodeGlobals.js');
 const { ActionRunner } = require('./ActionRunner');
 
 //------------------------
