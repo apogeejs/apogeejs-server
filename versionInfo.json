@@ -1,11 +1,7 @@
 {
+    "repoName": "apogeejs-server",
     "version": "2.0.0-p1",
-    "isProductionRelease": false,
-    "suppressReleasePresentCheck": true,
-    "buildInfoUrl": "/apogeejs-server/buildInfo.json", 
-    "dependentVersions": {
-        "apogeejs-base-lib": {"version": "2.0.0-p1", "isProductionRelease": false},
-        "apogeejs-util-lib": {"version": "2.0.0-p1", "isProductionRelease": false},
-        "apogeejs-model-lib": {"version": "2.0.0-p1", "isProductionRelease": false}
-    }
+    "isProductionRelease": true,
+    "suppressReleasePresentCheck": false,
+    "buildInfoUrl": "/apogeejs-server/buildInfo.json"
 }

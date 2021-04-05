@@ -2,12 +2,6 @@
     "repoName": "apogeejs-server",
     "taskList": [
         {
-            "type": "copyFileList",
-            "srcFileUrlList": [
-                "/apogeejs-server/versionInfo.json"
-            ]
-        },
-        {
             "type": "copyAndReplace",
             "srcFileUrl": "/apogeejs-server/package.json",
             "replacementList": [
@@ -16,6 +10,13 @@
                     "lib": "this",
                     "type": "version"
                 }
+            ]
+        },
+        {
+            "type": "copyFileList",
+            "srcFileUrlList": [
+                "/apogeejs-server-ide/LICENSE",
+                "/apogeejs-server-ide/README.md"
             ]
         },
         {
