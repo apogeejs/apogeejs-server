@@ -1,2 +1,4 @@
 node_modules/
-releases-dev/
+apogeejs-base-lib/
+apogeejs-util-lib/
+apogeejs-model-lib/
