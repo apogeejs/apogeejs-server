@@ -62,7 +62,7 @@
             "outputFileName": "apogeejs-model-lib.js",
             "childFolder": "apogeejs-model-lib/src",
             "externalLibMapping": {
-                "//apogeejs-releases/releases/ext/esprima/v2.7.3/esprima.es.js": "esprima"
+                "//apogeejs-releases/releases/ext/esprima/v4.0.1/esprima.es.js": "esprima"
             }
         },
         {
