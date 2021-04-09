@@ -1,4 +1,4 @@
-const { timeStamp } = require('console');
+//const { timeStamp } = require('console');
 var fs = require('fs');
 const path = require('path');
 const { WorkspaceManager } = require('./WorkspaceManager');
@@ -18,6 +18,7 @@ class ApogeeManager {
         this.settings = null;
         this.handlerStubs = {};
         this.serverDir = null;
+        this.loadedModules = {};
     }
     
     /** This method initializes the handler with the descriptor json. */
@@ -60,6 +61,36 @@ class ApogeeManager {
 
         return initPromise;
     }
+
+    /** This method loads modules as needed, making sure each is loaded only once on thi server. 
+     * @arg moduleList - This the the refEntries list from the workspace
+     * @arg workspaceName - The name of the workspace requesting the modules.
+    */
+    loadModules(moduleList,workspaceName) {
+        moduleList.forEach(moduleEntry => {
+            //we will only load npm modules
+            if(moduleEntry.entryType == "npm module") {
+                let moduleName = moduleEntry.url;
+                //load the module if needed
+                if(this.loadedModules[moduleName] == undefined) {
+                    this._loadModule(moduleName);
+                    this.loadedModules[moduleName] = [];
+                }
+                //record this workspace as a user for this module
+                this.loadedModules[moduleName].push(workspaceName);
+            }
+        })
+    }
+
+    /** This method should be called when a workspace is being undeployed. It will remove and modules that 
+     * are no longer needed on this server. 
+     * @arg moduleList - This the the refEntries list from the workspace
+     * @arg workspaceName - The name of the workspace requesting the modules.
+     */
+    unloadModules(moduleList,workspaceName) {
+        //for now we have no unload. If we add dynamic deploy we will want to add this.
+        throw new Error("Implement unload modules! (Once we get dynamic deploy functionality)");
+    }
     
     /** This method should be called to shut down the server. */
     shutdown() {
@@ -87,7 +118,7 @@ class ApogeeManager {
         for(let workspaceName in descriptor.workspaces) {
             let workspaceInfo = descriptor.workspaces[workspaceName];
             let workspaceSettings = this._loadSettings(workspaceInfo);
-            let workspaceManager = new WorkspaceManager(workspaceName,workspaceInfo,workspaceSettings);
+            let workspaceManager = new WorkspaceManager(this,workspaceName,workspaceInfo,workspaceSettings);
 
             //this is asynchronous. It won't handle requests until it is finished
             workspaceManager.initEndpoints(app);
@@ -108,6 +139,12 @@ class ApogeeManager {
         } 
         
         return settings;
+    }
+
+    /** This method loads a module. It may throw an exception if there is a failure. */
+    _loadModule(moduleName) {
+        let module = require(moduleName);
+        if((module)&&(module.initApogeeModule)) module.initApogeeModule();
     }
     
 }

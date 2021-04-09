@@ -20,8 +20,10 @@ function getTimestamp() {
 class WorkspaceManager extends ActionRunner {
 
     /** Constructor */
-    constructor(workspaceName,workspaceConfig,settings) { 
+    constructor(apogeeManager, workspaceName,workspaceConfig,settings) { 
         super();
+
+        this.apogeeManager = apogeeManager;
 
         //configuration 
         this.workspaceName = workspaceName;
@@ -147,22 +149,22 @@ class WorkspaceManager extends ActionRunner {
         }
         else {
             try {
-                let modelJson = this._getModelJson(workspaceText);
+                let {moduleListJson, modelJson} = this._parseWorkspaceJson(workspaceText);
                 
-                if(modelJson.version != WorkspaceManager.SUPPORTED_WORKSPACE_VERSION) {   
-                    this._handleSetupError("Improper workspace version. Required: " + WorkspaceManager.SUPPORTED_WORKSPACE_VERSION + ", Found: " + this.headlessWorkspaceJson.version);
+                //load modules if there are any
+                if(modelListJson) {
+                    this.apogeeManager.loadModules(moduleListJson,this.workspaceName);
                 }
-                else {
-                    //create and load the base model
-                    let model = new Model(this.getModelRunContext());
-                    this.setModel(model);
 
-                    let loadAction = {};
-                    loadAction.action = "loadModel";
-                    loadAction.modelJson = modelJson;
-                    //run the load action with invalidOK and the error msg prefix
-                    this.runActionOnModel(loadAction,true,"Error loading base model: ");
-                }
+                //create and load the base model
+                let model = new Model(this.getModelRunContext());
+                this.setModel(model);
+
+                let loadAction = {};
+                loadAction.action = "loadModel";
+                loadAction.modelJson = modelJson;
+                //run the load action with invalidOK and the error msg prefix
+                this.runActionOnModel(loadAction,true,"Error loading base model: ");
             }
             catch(error) {
                 this._handleSetupError("Error loading workspace: " + error.message);
@@ -171,17 +173,33 @@ class WorkspaceManager extends ActionRunner {
     }
 
     /** This loads the model json from the input text. */
-    _getModelJson(inputText) {
+    _parseWorkspaceJson(inputText) {
+        let moduleListJson;
+        let modelJson;
+
         let inputJson = JSON.parse(inputText);
         if(inputJson.fileType == "apogee app js workspace") {
-            return inputJson.code.model;
+            //check version - this throws an error on failure
+            this._validateWorkspaceJson(inputJson);
+
+            //load from workspace
+            if((inputJson.references)&&(inputJson.references.refEntries)) {
+                moduleListJson = inputJson.references.refEntries;
+            }
+            modelJson = inputJson.code.model;
         }
         else if(inputJson.fileType == "apogee model") {
-            return inputJson;
+            //check version - this throws an error on failure
+            this._validateModelJson(inputJson);
+            
+            //here there can be no references
+            modelJson = inputJson;
         }
         else {
             throw new Error("Improper workspace format");
         }
+
+        return {moduleListJson,modelJson};
     }
 
     
@@ -232,10 +250,25 @@ class WorkspaceManager extends ActionRunner {
         return member.getId();
     }
 
+    /** This method checks if the workspace json is supported. If not an error is thrown. */
+    _validateWorkspaceVersion(workspaceJson) {
+        if(workspaceJson.version != WorkspaceManager.SUPPORTED_WORKSPACE_VERSION) {   
+            throw new Error("Improper workspace version. Required: " + WorkspaceManager.SUPPORTED_WORKSPACE_VERSION + ", Found: " + workspaceJson.version);
+        }
+    }
+
+    /** This method checks if the model json is supported. If not an error is thrown. */
+    _validateModelVersion(modelJson) {
+        if(modelJson.version != WorkspaceManager.SUPPORTED_MODEL_VERSION) {   
+            throw new Error("Improper model version. Required: " + WorkspaceManager.SUPPORTED_MODEL_VERSION + ", Found: " + modelJson.version);
+        }
+    }
+
 }
 
 //this is the supported version of the workspace.
-WorkspaceManager.SUPPORTED_WORKSPACE_VERSION = .3;
+WorkspaceManager.SUPPORTED_WORKSPACE_VERSION = "0.60";
+WorkspaceManager.SUPPORTED_MODEL_VERSION = 0.3;
 
 module.exports.WorkspaceManager = WorkspaceManager;
 
