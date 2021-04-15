@@ -70,7 +70,8 @@ class ApogeeManager {
         moduleList.forEach(moduleEntry => {
             //we will only load npm modules
             if(moduleEntry.entryType == "npm module") {
-                let moduleName = moduleEntry.url;
+                let moduleName = moduleEntry.serverUrl ? moduleEntry.serverUrl : moduleEntry.url;
+                
                 //load the module if needed
                 if(this.loadedModules[moduleName] == undefined) {
                     this._loadModule(moduleName);
