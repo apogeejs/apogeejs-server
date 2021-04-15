@@ -152,7 +152,7 @@ class WorkspaceManager extends ActionRunner {
                 let {moduleListJson, modelJson} = this._parseWorkspaceJson(workspaceText);
                 
                 //load modules if there are any
-                if(modelListJson) {
+                if(moduleListJson) {
                     this.apogeeManager.loadModules(moduleListJson,this.workspaceName);
                 }
 
@@ -180,17 +180,18 @@ class WorkspaceManager extends ActionRunner {
         let inputJson = JSON.parse(inputText);
         if(inputJson.fileType == "apogee app js workspace") {
             //check version - this throws an error on failure
-            this._validateWorkspaceJson(inputJson);
+            this._validateWorkspaceVersion(inputJson);
 
             //load from workspace
             if((inputJson.references)&&(inputJson.references.refEntries)) {
                 moduleListJson = inputJson.references.refEntries;
             }
+            
             modelJson = inputJson.code.model;
         }
         else if(inputJson.fileType == "apogee model") {
             //check version - this throws an error on failure
-            this._validateModelJson(inputJson);
+            this._validateModelVersion(inputJson);
             
             //here there can be no references
             modelJson = inputJson;
