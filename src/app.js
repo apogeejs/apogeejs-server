@@ -122,7 +122,7 @@ function initServer(configJson) {
 
     //apogee endpoint initialization
     const apogeeManager = new ApogeeManager();
-    var initPromise = apogeeManager.getInitPromise(app,configJson.serverDirectory,configJson.descriptorPath);
+    var initPromise = apogeeManager.getInitPromise(configJson.serverDirectory,configJson.descriptorPath);
 
     //---------------------
     // listener
@@ -130,6 +130,9 @@ function initServer(configJson) {
 
     //start listener after apogee initialization
     var startListener = () => {
+        //add the handler for apogee workspaces
+        app.use(apogeeManager.getHandler());
+        //start the listener
         app.listen(configJson.port, () => console.log(`Example app listening on port ${configJson.port}!`));
     }
 

@@ -1,6 +1,7 @@
 //const { timeStamp } = require('console');
 var fs = require('fs');
 const path = require('path');
+const express = require('express')
 const { WorkspaceManager } = require('./WorkspaceManager');
 
 /** This class initializes and shuts down the apogee workspace listeners. */
@@ -19,10 +20,21 @@ class ApogeeManager {
         this.handlerStubs = {};
         this.serverDir = null;
         this.loadedModules = {};
+        this.workspaces = [];
+
+        this.router = null;
+        this.handler = (req,res,next) => {
+            this.router(req,res,next);
+        }
+    }
+
+    /** This returns the handler function to handle apogee requests. */
+    getHandler() {
+        return this.handler;
     }
     
     /** This method initializes the handler with the descriptor json. */
-    getInitPromise(app,serverDir,descriptorFileRelative) {
+    getInitPromise(serverDir,descriptorFileRelative) {
         this.serverDir = serverDir;
 
         var initPromise = new Promise( (resolve,reject) => {
@@ -36,7 +48,11 @@ class ApogeeManager {
                     try {
                         var descriptor = JSON.parse(descriptorText);
                         console.log("Apogee descriptor loaded");
-                        this._initEndpoints(app,descriptor);
+                        this._initEndpoints(descriptor);
+
+                        //load router
+                        this._loadRouter();
+
                         resolve();               
                     }
                     catch(error) {
@@ -105,7 +121,7 @@ class ApogeeManager {
     //================================
    
     /** This method initialized the endpoints.  */
-    _initEndpoints(app,descriptor) {
+    _initEndpoints(descriptor) {
         this.descriptor = descriptor; 
 
         //create settings instance
@@ -119,12 +135,13 @@ class ApogeeManager {
         for(let workspaceName in descriptor.workspaces) {
             let workspaceInfo = descriptor.workspaces[workspaceName];
             let workspaceSettings = this._loadSettings(workspaceInfo);
-            let workspaceManager = new WorkspaceManager(this,workspaceName,workspaceInfo,workspaceSettings);
+            let sourcePath = path.join(this.serverDir,workspaceInfo.source);
+            let workspaceManager = new WorkspaceManager(this,workspaceName,sourcePath,workspaceSettings);
 
             //this is asynchronous. It won't handle requests until it is finished
-            workspaceManager.initEndpoints(app);
+            workspaceManager.initEndpoints();
 
-            this.handlerStubs[workspaceName] = WorkspaceManager;
+            this.handlerStubs[workspaceName] = workspaceManager;
         }
     }
 
@@ -146,6 +163,14 @@ class ApogeeManager {
     _loadModule(moduleName) {
         let module = require(moduleName);
         if((module)&&(module.initApogeeModule)) module.initApogeeModule();
+    }
+
+    _loadRouter() {
+        this.router = express.Router();
+        for(let workspaceName in this.handlerStubs) {
+            let workspaceManager = this.handlerStubs[workspaceName];
+            this.router.use("/" + workspaceName,workspaceManager.getHandler());
+        }
     }
     
 }

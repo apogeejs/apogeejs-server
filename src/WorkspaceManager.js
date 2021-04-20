@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const express = require('express');
 const { ActionRunner } = require('./ActionRunner');
 const { WorkspaceHandler } = require('./WorkspaceHandler');
 const apogee = require('../apogeejs-model-lib/src/apogeejs-model-lib.js');
@@ -20,14 +21,16 @@ function getTimestamp() {
 class WorkspaceManager extends ActionRunner {
 
     /** Constructor */
-    constructor(apogeeManager, workspaceName,workspaceConfig,settings) { 
+    constructor(apogeeManager, workspaceName,sourcePath,settings) { 
         super();
 
         this.apogeeManager = apogeeManager;
 
         //configuration 
-        this.workspaceName = workspaceName;
-        this.workspaceConfig = workspaceConfig;
+        this.workspaceName = workspaceName; //TEMPORARY
+        this.sourcePath = sourcePath; //TEMPORARY
+        this.workspaceDescriptor = null;
+        this.endpointDescriptorArray = [];
         this.settings = settings;
  
         //base model input
@@ -39,24 +42,22 @@ class WorkspaceManager extends ActionRunner {
         this.workspaceShutdown = false;
         this.workspaceError = false;
         this.workspaceErrorMsg = "";
+
+        //routing
+        this.router = express.Router();
+        this.handler = (req,res,next) => {
+            this.router(req,res,next);
+        }
+    }
+
+    getHandler() {
+        return this.handler;
     }
     
     /** This method initializes the endpoints for this workspace.  */
-    initEndpoints(app) {
-        //create endpoints for this workspace
-        for(let endpointName in this.workspaceConfig.endpoints) {
-            //add endpoints to app
-            let handlerFunction = (request,response) => this._processRequest(endpointName,request,response);
-            let path = "/" + this.workspaceName + "/" + endpointName;
-            //for now we are automatically adding a listener for get and post. We might want to make
-            //this optional or at least dependent on whether or not there is a body
-            app.post(path,handlerFunction);
-            app.get(path,handlerFunction);
-        }
-
+    initEndpoints() {
         //load the workspace json
-        let sourcePath = path.join(this.settings.serverDir,this.workspaceConfig.source);
-        fs.readFile(sourcePath, (err,workspaceText) => this._onWorkspaceRead(err,workspaceText));  //load from source  
+        fs.readFile(this.sourcePath, (err,workspaceText) => this._onWorkspaceRead(err,workspaceText));  //load from source  
     }
     
     shutdown() {
@@ -206,30 +207,41 @@ class WorkspaceManager extends ActionRunner {
     
     /** This populates the endpoint information needed by the endpoint handlers */
     _populateEndpointInfo() {
+        //load the service descriptor from the model
+        this._loadDescriptor();
+
         //populate the endpoint information
         this.endpointInfoMap = {};
-        for(let endpointName in this.workspaceConfig.endpoints) {
+        this.endpointDescriptorArray.forEach(endpointDescriptor => {
             //create the endpoint info
-            let endpointConfig = this.workspaceConfig.endpoints[endpointName];
+            let endpointName = endpointDescriptor.name;
             let endpointInfo = {};
 
             //get the input member ids, if applicable
             endpointInfo.inputIds = {};
-            if(endpointConfig.inputs) {
-                this._loadMemberIds(endpointConfig.inputs,endpointInfo.inputIds);
+            if(endpointDescriptor.inputs) {
+                this._loadMemberIds(endpointDescriptor.inputs,endpointInfo.inputIds);
             }
             
             //get the return value member id, if applicable
-            if(endpointConfig.output) {
-                endpointInfo.outputId = this._getMemberId(endpointConfig.output);
+            if(endpointDescriptor.output) {
+                endpointInfo.outputId = this._getMemberId(endpointDescriptor.output);
             }
 
-            if(endpointConfig.headerKeys) {
-                endpointInfo.headerKeys = endpointConfig.headerKeys
+            if(endpointDescriptor.headerKeys) {
+                endpointInfo.headerKeys = endpointDescriptor.headerKeys
             }
 
             this.endpointInfoMap[endpointName] = endpointInfo;
-        }
+
+            //add endpoints to the router
+            let handlerFunction = (request,response) => this._processRequest(endpointName,request,response);
+            let path = "/" + endpointName;
+            //for now we are automatically adding a listener for get and post. We might want to make
+            //this optional or at least dependent on whether or not there is a body
+            this.router.post(path,handlerFunction);
+            this.router.get(path,handlerFunction);
+        });
     }
 
     /** This populates the member ids in the targetIdMap given the member names 
@@ -262,6 +274,24 @@ class WorkspaceManager extends ActionRunner {
     _validateModelVersion(modelJson) {
         if(modelJson.version != WorkspaceManager.SUPPORTED_MODEL_VERSION) {   
             throw new Error("Improper model version. Required: " + WorkspaceManager.SUPPORTED_MODEL_VERSION + ", Found: " + modelJson.version);
+        }
+    }
+
+    /** This method reads the descriptor from the model. */
+    _loadDescriptor(model) {
+        let memberMap = this.baseModel.getField("memberMap");
+        this.endpointDescriptorArray = [];
+        for(let id in memberMap) {
+            let member = memberMap[id];
+            if(member.isMember) {
+                if(member.getName().startsWith("_workspaceDescriptor")) {
+                    this.workspaceDescriptor = member.getData();
+                }
+                else if(member.getName().startsWith("_endpointDescriptor")) {
+                    let endpointDescriptor = member.getData();
+                    this.endpointDescriptorArray.push(endpointDescriptor);
+                }
+            }
         }
     }
 
