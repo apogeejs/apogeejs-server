@@ -1,5 +1,5 @@
 //const { timeStamp } = require('console');
-var fs = require('fs');
+var fsPromises = require('fs').promises;
 const path = require('path');
 const express = require('express')
 const { WorkspaceManager } = require('./WorkspaceManager');
@@ -18,9 +18,8 @@ class ApogeeManager {
         this.descriptor = null;
         this.settings = null;
         this.handlerStubs = {};
-        this.serverDir = null;
+        this.deployDir = null;
         this.loadedModules = {};
-        this.workspaces = [];
 
         this.router = null;
         this.handler = (req,res,next) => {
@@ -34,48 +33,32 @@ class ApogeeManager {
     }
     
     /** This method initializes the handler with the descriptor json. */
-    getInitPromise(serverDir,descriptorFileRelative) {
-        this.serverDir = serverDir;
+    async init(deployDir) {
+        //init some variables
+        this.router = express.Router();
+        this.handlerStubs = {};
+        this.deployDir = deployDir;
 
-        var initPromise = new Promise( (resolve,reject) => {
-            //callback for the descriptor
-            var onDescriptorRead = (err,descriptorText) => {
-                if(err) {
-                    let errorMsg = "Error: Descriptor not read. " + err;
-                    reject(errorMsg);
-                }
-                else {
-                    try {
-                        var descriptor = JSON.parse(descriptorText);
-                        console.log("Apogee descriptor loaded");
-                        this._initEndpoints(descriptor);
-
-                        //load router
-                        this._loadRouter();
-
-                        resolve();               
-                    }
-                    catch(error) {
-                        let errorMsg = "Error initializing endpoints";
-                        console.error(error.stack);
-                        reject(errorMsg);
-                    }
-                }  
-            }
-            
-            //read the descriptor
-            try {
-                let descriptorFileAbsolute = path.join(this.serverDir,descriptorFileRelative)
-                fs.readFile(descriptorFileAbsolute,onDescriptorRead);
-            }
-            catch(error) {
-                let errorMsg = "Error reading descriptor";
-                console.error(error.stack);
-                reject(errorMsg);
+        //load workspaces
+        let fileInfos = await fsPromises.readdir(this.deployDir, {withFileTypes: true});
+        let workspaceManagerPromises = [];
+        fileInfos.forEach(fileInfo => {
+            if(fileInfo.isFile()) {
+                let workspaceManagerPromise = this._loadWorkspace(fileInfo.name);
+                workspaceManagerPromises.push(workspaceManagerPromise);
             }
         });
 
-        return initPromise;
+        //store the workspaces and add them to the router
+        await Promise.all(workspaceManagerPromises).then(workspaceManagers => {
+            workspaceManagers.forEach(workspaceManager => {
+                let workspaceName = workspaceManager.getName();
+                this.handlerStubs[workspaceName] = workspaceManager;
+                this.router.use("/" + workspaceName,workspaceManager.getHandler());
+            })
+        });
+
+        return true;
     }
 
     /** This method loads modules as needed, making sure each is loaded only once on thi server. 
@@ -112,8 +95,11 @@ class ApogeeManager {
     /** This method should be called to shut down the server. */
     shutdown() {
         //this doesn't actually shutdown server right now
-        this.handlerStubs.forEach(handlerStub => handlerStub.shutdown());
-        this.handlerStubs = [];
+        for(let workspaceName in this.handlerStubs) {
+            let workspaceManager = this.handlerStubs[workspaceName];
+            workspaceManager.shutdown();
+        }
+        this.handlerStubs = {};
     }
     
     //================================
@@ -121,56 +107,21 @@ class ApogeeManager {
     //================================
    
     /** This method initialized the endpoints.  */
-    _initEndpoints(descriptor) {
-        this.descriptor = descriptor; 
+    async _loadWorkspace(fileName) {
+        let filePath = path.join(this.deployDir,fileName);
+        let fileText = await fsPromises.readFile(filePath);
 
-        //create settings instance
-        
+        let workspaceJson = JSON.parse(fileText);
+        let workspaceManager = new WorkspaceManager(this,fileName);
+        await workspaceManager.initWorkspace(workspaceJson);
 
-        //create handler stubs
-        if(!descriptor.workspaces) {
-            throw new Error("Workspaces entry missing in descriptor!");
-        }
-
-        for(let workspaceName in descriptor.workspaces) {
-            let workspaceInfo = descriptor.workspaces[workspaceName];
-            let workspaceSettings = this._loadSettings(workspaceInfo);
-            let sourcePath = path.join(this.serverDir,workspaceInfo.source);
-            let workspaceManager = new WorkspaceManager(this,workspaceName,sourcePath,workspaceSettings);
-
-            //this is asynchronous. It won't handle requests until it is finished
-            workspaceManager.initEndpoints();
-
-            this.handlerStubs[workspaceName] = workspaceManager;
-        }
-    }
-
-    /** This method creates the settings as the global settings with any overrides 
-     * provided by the workspace descriptor. */
-    _loadSettings(workspaceInfo) {
-        var settings = Object.assign({},ApogeeManager.GLOBAL_SETTINGS);
-
-        settings.serverDir = this.serverDir;
-        
-        if(workspaceInfo.settings) {
-            settings = Object.assign(settings,workspaceInfo.settings);
-        } 
-        
-        return settings;
+        return workspaceManager;
     }
 
     /** This method loads a module. It may throw an exception if there is a failure. */
     _loadModule(moduleName) {
         let module = require(moduleName);
         if((module)&&(module.initApogeeModule)) module.initApogeeModule();
-    }
-
-    _loadRouter() {
-        this.router = express.Router();
-        for(let workspaceName in this.handlerStubs) {
-            let workspaceManager = this.handlerStubs[workspaceName];
-            this.router.use("/" + workspaceName,workspaceManager.getHandler());
-        }
     }
     
 }

@@ -6,11 +6,20 @@ const doAction = apogee.doAction;
 class ActionRunner {
     constructor() {
         this.workingModel = null;
+        this.onComplete = null;
+        this.onError = null;
     }
 
-    /** This method sets the initial model on which to run the action. */
-    setModel(model) {
-        this.workingModel = model;
+    /** This method sets the base model as a new empty model. */
+    loadNewModel() {
+        this.workingModel = new apogee.Model(this.getModelRunContext());
+    }
+
+    /** This method sets the base model as a clean copy of the given model. */
+    copyModel(model) {
+        //Clean makes sure the model is not in the middle of a calculation
+        //and cleans it up if so. This shouldn't be.
+        this.workingModel = model.getCleanCopy(this.getModelRunContext());
     }
 
     /** This method returns the current model, such as after completion of the action. */
@@ -18,16 +27,10 @@ class ActionRunner {
         return this.workingModel;
     }
 
-    /** This function will be called when the action and any subsequent asynchronous actions complete. */
-    //onActionCompleted() {}
-
-    /** This funtion will be called if there is an error running the action. */
-    //onActionError(msg) {};
-
     /** This gets the model run context that should be used for the model in this action runner. */
     getModelRunContext() {
         let modelRunContext = {};
-        modelRunContext.doAsynchActionCommand = (modelId,action) => this.runActionOnModel(action,true,"Internal Command:");
+        modelRunContext.doAsynchActionCommand = (modelId,action) => this._runActionOnModelImpl(action,true,"Internal Command:");
         return modelRunContext;
     }
 
@@ -42,8 +45,28 @@ class ActionRunner {
      *      a request.
      * - errorMsgPrefext - This is used to prefix an error message detected in running the action.
      */
-    runActionOnModel(action,invalidOk,errorMsgPrefix) {
+    async runActionOnModel(action,invalidOk,errorMsgPrefix) {
+        let actionPromise = new Promise( (resolve,reject) => {
+            this.onComplete = () => {
+                resolve();
+                this.onComplete = null;
+            }
+            this.onError = errMsg => {
+                reject(errMsg);
+                this.onError = null;
+            }
 
+            this._runActionOnModelImpl(action,invalidOk,errorMsgPrefix);
+        })
+        
+        return actionPromise;
+    }
+
+    //===========================
+    // private methods
+    //===========================
+
+    _runActionOnModelImpl(action,invalidOk,errorMsgPrefix) {
         let actionResult;
         //execute the action (if applicable)
         if(action) {
@@ -62,7 +85,7 @@ class ActionRunner {
         }
         else {
             //handle error
-            this.onError(errorMsgPrefix + actionResult.errorMsg);
+            if(this.onError) onError(errorMsgPrefix + actionResult.errorMsg);
         }
     }
 
@@ -84,13 +107,13 @@ class ActionRunner {
 
                 case apogeeutil.STATE_ERROR:
                     //error! (For now exit on first error detected)
-                    this.onActionError(errorMsgPrefix + child.getErrorMsg());
+                    if(this.onError) this.onError(errorMsgPrefix + child.getErrorMsg());
                     return;
 
                 case apogeeutil.STATE_INVALID:
                     if(!invalidOk) {
                         //if we should not have invalid, flag an error
-                        this.onActionError(errorMsgPrefix + "Unknown error - invalid result");
+                        if(this.orError) this.onError(errorMsgPrefix + "Unknown error - invalid result");
                         return;
                     }
                     break;
@@ -104,7 +127,7 @@ class ActionRunner {
         //if we get here we are either pending or finished
         if(!isPending) {
             //we are finished
-            this.onActionCompleted();
+            if(this.onComplete) this.onComplete();
         }
     }
 }

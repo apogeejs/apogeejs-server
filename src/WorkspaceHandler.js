@@ -13,11 +13,10 @@ function getTimestamp() {
 /** This class manages the calculation for a single request. It starts with a base model instance
  * and executes an action to update the input tables to the values specified in the request. At completion
  * of the calculation it returns the result in the response. */
-class WorkspaceHandler extends ActionRunner {
+class WorkspaceHandler {
     
     /** Constuctor. This takes an non-request specific info. */
     constructor(baseModel,settings) {
-        super();
 
 //this is for debug
 this.debugId = DEBUG_NEXT_HANDLER_ID++;
@@ -30,7 +29,8 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
         //Get clean copy should not actually do anything here other than returning the input model (since it should be "clean").
         //The model is immutable so once we run actions on it we will not change the input model instance but will end up 
         //with a new model instance.
-        this.setModel(baseModel.getCleanCopy(this.getModelRunContext()));
+        this.modelManager = new ActionRunner();
+        this.modelManager.copyModel(baseModel);
 
         //these values will be set by the request
         this.response = null;
@@ -38,7 +38,7 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
     }
 
     /** This method handles a request. */
-    handleRequest(request,response,endpointInfo) {  
+    async handleRequest(request,response,endpointInfo) {  
         try {
             //store the response so we can access it later
             this.response = response;
@@ -51,34 +51,22 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
             let inputAction = this._getInputAction(endpointInfo,inputDataMap);
 
             //run action with: invalidOk = true and errorMsgPrefix
-            this.runActionOnModel(inputAction,true,"Error executing request: ");
-        }
-        catch(error) {
-            this._doErrorResponse("Unknown error: " + error.message);
-        }
-    }
+            await this.modelManager.runActionOnModel(inputAction,true,"Error executing request: ");
 
-    /** Action runner implementation - This function will be called when the action and any subsequent asynchronous actions complete. */
-    onActionCompleted() {
-        try {
-            //load the return value, if applicable and respond
+            //return result
             let resultValue;
             if(this.outputId) {
-                let model = this.getModel();
+                let model = this.modelManager.getModel();
                 let resultMember = model.lookupMemberById(this.outputId);
                 resultValue = resultMember.getData();
             }
             this._doSuccessResponse(resultValue);
+
         }
         catch(error) {
             this._doErrorResponse("Unknown error: " + error.message);
         }
     }
-
-    /** Action runner implementation - This funtion will be called if there is an error running the action. */
-    onActionError(msg) {
-        this._doErrorResponse(msg);
-    };
 
     //===========================
     // Private methods

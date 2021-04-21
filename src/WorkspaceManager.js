@@ -1,10 +1,7 @@
-const fs = require('fs');
-const path = require('path');
 const express = require('express');
 const { ActionRunner } = require('./ActionRunner');
 const { WorkspaceHandler } = require('./WorkspaceHandler');
-const apogee = require('../apogeejs-model-lib/src/apogeejs-model-lib.js');
-const Model = apogee.Model;
+
 //-------------------------------
 //debug
 DEBUG_NEXT_REQUEST_ID = 1;
@@ -18,23 +15,24 @@ function getTimestamp() {
  * more endpoints. This instantiates a base model (workspace) instance and identifies the input and output members
  * for each endpoint. When a request comes in it instantiates a workspace handler to do the actual request
  * calculation. */
-class WorkspaceManager extends ActionRunner {
+class WorkspaceManager {
 
     /** Constructor */
-    constructor(apogeeManager, workspaceName,sourcePath,settings) { 
-        super();
-
+    constructor(apogeeManager,fileName) { 
         this.apogeeManager = apogeeManager;
 
+        //identifiers
+        this.workspaceName = null; //TEMPORARY
+        this.fileName = fileName; //TEMPORARY
+        this.uniqueKey = apogeeutil.getUniqueString();
+        
         //configuration 
-        this.workspaceName = workspaceName; //TEMPORARY
-        this.sourcePath = sourcePath; //TEMPORARY
         this.workspaceDescriptor = null;
         this.endpointDescriptorArray = [];
-        this.settings = settings;
+        this.settings = {};
  
         //base model input
-        this.baseModel = null;
+        this.modelManager = null;
         this.endpointInfoMap = null;
 
         //status info
@@ -50,14 +48,52 @@ class WorkspaceManager extends ActionRunner {
         }
     }
 
+    /** This gets the workspace name. It will only be valid after the workspace is loaded. */
+    getName() {
+        return this.workspaceName;
+    }
+
+    /** This gets a display string for the workspace. */
+    getDisplayString() {
+        if(this.workspaceName) return this.workspaceName;
+        else if(this.fileName) return "file " + this.fileName;
+        else return "worskpace key " + this.uniqueKey;
+    }
+
+    /** This returns the handler for request to this workspace. */
     getHandler() {
         return this.handler;
     }
     
     /** This method initializes the endpoints for this workspace.  */
-    initEndpoints() {
-        //load the workspace json
-        fs.readFile(this.sourcePath, (err,workspaceText) => this._onWorkspaceRead(err,workspaceText));  //load from source  
+    async initWorkspace(workspaceJson) {
+        try {
+            let {moduleListJson, modelJson} = this._parseWorkspaceJson(workspaceJson);
+            
+            //load modules if there are any
+            if(moduleListJson) {
+                this.apogeeManager.loadModules(moduleListJson,this.uniqueKey);
+            }
+
+            //create and load the base model
+            this.modelManager = new ActionRunner();
+            this.modelManager.loadNewModel();
+
+            let loadAction = {};
+            loadAction.action = "loadModel";
+            loadAction.modelJson = modelJson;
+
+            //run the load action with invalidOK and the error msg prefix
+            await this.modelManager.runActionOnModel(loadAction,true,"Error loading base model: ");
+
+            //initialize the endpoint info
+            this._populateEndpointInfo();
+
+            this.workspaceReady = true;
+        }
+        catch(error) {
+            this._handleSetupError("Error loading workspace: " + error.message);
+        }
     }
     
     shutdown() {
@@ -65,32 +101,6 @@ class WorkspaceManager extends ActionRunner {
         this.workspaceReady = false;
         this.workspaceShutdown = true;
     }
-
-    //---------------------------------
-    //implementations for action runner
-    //---------------------------------
-
-    /** This function will be called when the action and any subsequent asynchronous actions complete. */
-    onActionCompleted() {
-        try {
-            //save the base model
-            this.baseModel = this.getModel();
-
-            //initialize the endpoint info
-            this._populateEndpointInfo();
-
-            //set workspace readh
-            this.workspaceReady = true;
-        }
-        catch(error) {
-            this._handleSetupError(error.message);
-        }
-    }
-
-    /** This funtion will be called if there is an error running the action. */
-    onActionError(msg) {
-        this._handleSetupError(msg);
-    };
     
     //====================================
     // Private Methods
@@ -115,10 +125,11 @@ class WorkspaceManager extends ActionRunner {
         try {
             let endpointInfo = this.endpointInfoMap[endpointName];
             if(!endpointInfo) {
-                throw new Error("Endpoint not found: " + endpointName + "for workspace " + this.workspaceName);
+                throw new Error("Endpoint not found: " + endpointName + "for workspace " + this.getDisplayString());
             }
 
-            let workspaceHandler = new WorkspaceHandler(this.baseModel,this.settings);
+            let baseModel = this.modelManager.getModel();
+            let workspaceHandler = new WorkspaceHandler(baseModel,this.settings);
             workspaceHandler.handleRequest(request,response,endpointInfo);
         }
         catch(error) {
@@ -130,55 +141,22 @@ class WorkspaceManager extends ActionRunner {
     _doWorkspaceNotReadyResponse(response) {
         let msg;
         if(this.workspaceError) {
-            msg = "Workspace endpoints not available: " + this.workspaceName + " Error loading workspace: " + this.workspaceErrorMsg;
+            msg = "Workspace endpoints not available: " + this.getDisplayString() + " Error loading workspace: " + this.workspaceErrorMsg;
         }
         else if(this.workspaceShutdown) {
-            msg = "The workspace has already been shutdown: " + this.workspaceName;
+            msg = "The workspace has already been shutdown: " + this.getDisplayString();
         }
         else {
-            msg = "The workspace is being initialized: " + this.workspaceName;
+            msg = "The workspace is being initialized: " + this.getDisplayString();
         }
         response.status(500).send(msg);
     }
 
-
-    /** This stores the workspace json given the workspace file text. */
-    _onWorkspaceRead(err,workspaceText) {
-        if(err) {
-            this._handleSetupError("Source data not loaded: " + err);
-            return;
-        }
-        else {
-            try {
-                let {moduleListJson, modelJson} = this._parseWorkspaceJson(workspaceText);
-                
-                //load modules if there are any
-                if(moduleListJson) {
-                    this.apogeeManager.loadModules(moduleListJson,this.workspaceName);
-                }
-
-                //create and load the base model
-                let model = new Model(this.getModelRunContext());
-                this.setModel(model);
-
-                let loadAction = {};
-                loadAction.action = "loadModel";
-                loadAction.modelJson = modelJson;
-                //run the load action with invalidOK and the error msg prefix
-                this.runActionOnModel(loadAction,true,"Error loading base model: ");
-            }
-            catch(error) {
-                this._handleSetupError("Error loading workspace: " + error.message);
-            }
-        }
-    }
-
     /** This loads the model json from the input text. */
-    _parseWorkspaceJson(inputText) {
+    _parseWorkspaceJson(inputJson) {
         let moduleListJson;
         let modelJson;
 
-        let inputJson = JSON.parse(inputText);
         if(inputJson.fileType == "apogee app js workspace") {
             //check version - this throws an error on failure
             this._validateWorkspaceVersion(inputJson);
@@ -209,6 +187,10 @@ class WorkspaceManager extends ActionRunner {
     _populateEndpointInfo() {
         //load the service descriptor from the model
         this._loadDescriptor();
+
+        //populate the workspace information
+        this.workspaceName = this.workspaceDescriptor.name;
+        this.settings = this.workspaceDescriptor.settings ? this.workspaceDescriptor.settings : {};
 
         //populate the endpoint information
         this.endpointInfoMap = {};
@@ -256,7 +238,8 @@ class WorkspaceManager extends ActionRunner {
 
     /** This gets the member id for the given member full name. */
     _getMemberId(memberFullName) {
-        let member = this.baseModel.getMemberByFullName(this.baseModel,memberFullName);
+        let model = this.modelManager.getModel();
+        let member = model.getMemberByFullName(model,memberFullName);
         if(!member) {
             throw new Error("Endpoint field not found: " + memberFullName);
         }
@@ -278,14 +261,16 @@ class WorkspaceManager extends ActionRunner {
     }
 
     /** This method reads the descriptor from the model. */
-    _loadDescriptor(model) {
-        let memberMap = this.baseModel.getField("memberMap");
+    _loadDescriptor() {
+        let model = this.modelManager.getModel();
+        let memberMap = model.getField("memberMap");
         this.endpointDescriptorArray = [];
         for(let id in memberMap) {
             let member = memberMap[id];
             if(member.isMember) {
                 if(member.getName().startsWith("_workspaceDescriptor")) {
                     this.workspaceDescriptor = member.getData();
+                    this.workspaceName = this.workspaceDescriptor.name;
                 }
                 else if(member.getName().startsWith("_endpointDescriptor")) {
                     let endpointDescriptor = member.getData();
