@@ -1,5 +1,5 @@
 //const { timeStamp } = require('console');
-var fsPromises = require('fs').promises;
+var fsPromises = require('fs/promises');
 const path = require('path');
 const express = require('express')
 const { WorkspaceManager } = require('./WorkspaceManager');
@@ -53,8 +53,11 @@ class ApogeeManager {
         await Promise.all(workspaceManagerPromises).then(workspaceManagers => {
             workspaceManagers.forEach(workspaceManager => {
                 let workspaceName = workspaceManager.getName();
-                this.handlerStubs[workspaceName] = workspaceManager;
-                this.router.use("/" + workspaceName,workspaceManager.getHandler());
+                if(workspaceName) {
+                    if(this.handlerStubs[workspaceName]) throw new Error("Duplicate workspaces: " + workspaceName);
+                    this.handlerStubs[workspaceName] = workspaceManager;
+                    this.router.use("/" + workspaceName,workspaceManager.getHandler());
+                }
             })
         });
 
@@ -108,14 +111,21 @@ class ApogeeManager {
    
     /** This method initialized the endpoints.  */
     async _loadWorkspace(fileName) {
-        let filePath = path.join(this.deployDir,fileName);
-        let fileText = await fsPromises.readFile(filePath);
+        try {
+            let filePath = path.join(this.deployDir,fileName);
+            let fileText = await fsPromises.readFile(filePath);
 
-        let workspaceJson = JSON.parse(fileText);
-        let workspaceManager = new WorkspaceManager(this,fileName);
-        await workspaceManager.initWorkspace(workspaceJson);
+            let workspaceJson = JSON.parse(fileText);
+            let workspaceManager = new WorkspaceManager(this,fileName);
+            await workspaceManager.initWorkspace(workspaceJson);
 
-        return workspaceManager;
+            return workspaceManager;
+        }
+        catch(loadError) {
+            console.log(loadError.toString());
+            if(loadError.stack) console.error(loadError.stack);
+            throw new Error("Error loading workspace file " + fileName);
+        }
     }
 
     /** This method loads a module. It may throw an exception if there is a failure. */
@@ -128,11 +138,6 @@ class ApogeeManager {
 
 /** Global settings */
 ApogeeManager.GLOBAL_SETTINGS = {
-    maxHandlerCount: 4, 
-    minHandlerCount: 1,
-    handlerSuccessiveCreateDelay: 5000, //we will delay between repeated checks to make new handlers
-    maxHandlerUnusedLifetimeMsec: 2*60*60*1000, //2 hours
-    maxHandlerLifetimeMsec: 4*60*60*1000, //4 hours
     responseTimeoutMsec: 2*60*1000, //2 minutes NOT IMPLMENTED!
     maxResponseIterations: 50 //this is a limit on iterative calculations (apogee messenger). In some cases this may be too small.
 }

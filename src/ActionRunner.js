@@ -85,7 +85,7 @@ class ActionRunner {
         }
         else {
             //handle error
-            if(this.onError) onError(errorMsgPrefix + actionResult.errorMsg);
+            if(this.onError) this.onError(errorMsgPrefix + actionResult.errorMsg);
         }
     }
 

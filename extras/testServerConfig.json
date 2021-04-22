@@ -1,0 +1,6 @@
+{
+    "fileFolderXXX": "file",
+    "fileUrlPrefixXXX": "/file",
+    "deployFolder": "/extras/deployBadDescriptor",
+    "portXXX": 8000
+} 

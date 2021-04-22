@@ -3,14 +3,12 @@
 require("../apogeejs-model-lib/src/nodeGlobals.js");
 require("../apogeejs-model-lib/src/debugHook.js");
 const express = require('express');
-var fs = require('fs');
-const bodyParser = require('body-parser');
+var fsPromises = require('fs/promises');
 const path = require('path')
 const {ApogeeManager} = require("./ApogeeManager");
 const apogeeutil = require('../apogeejs-util-lib/src/apogeejs-util-lib.js');
 const apogeebase = require('../apogeejs-base-lib/src/apogeejs-base-lib.js');
 const apogee = require('../apogeejs-model-lib/src/apogeejs-model-lib.js');
-const { config } = require("process");
 
 //libraries
 __globals__.apogeeutil = apogeeutil;
@@ -18,7 +16,7 @@ __globals__.apogeebase = apogeebase;
 __globals__.apogee = apogee;
 
 //allow no user interaction in standard alert/confirm
-//__globals__.apogeeLog = (msg) => console.log(message);
+__globals__.apogeeLog = (msg) => console.log(message);
 __globals__.apogeeUserAlert = (msg) => console.log(msg);
 __globals__.apogeeUserConfirm = (msg,okText,cancelText,okAction,cancelAction,defaultToOk) => defaultToOk ? okAction : cancelAction;
 __globals__.apogeeUserConfirmSynchronous = (msg,okText,cancelText,defaultToOk) => defaultToOk;
@@ -91,7 +89,6 @@ async function startServer() {
         //-------------------
 
         app.listen(configJson.port, () => console.log(`Example app listening on port ${configJson.port}!`));
-
     }
     catch(error) {
         console.log("Server failed to start: " + error.toString());

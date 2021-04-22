@@ -64,7 +64,7 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
 
         }
         catch(error) {
-            this._doErrorResponse("Unknown error: " + error.message);
+            this._doErrorResponse("Unknown error: " + error.toString());
         }
     }
 

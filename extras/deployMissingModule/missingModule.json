@@ -1,0 +1,1681 @@
+{
+    "fileType": "apogee app js workspace",
+    "version": "0.60",
+    "references": {
+      "refEntries": [
+        {
+          "url": "apogeejs-module-DUMMY",
+          "nickname": "apogeejs-module-DUMMY",
+          "entryType": "npm module"
+        }
+      ],
+      "viewState": {
+        "treeState": 1,
+        "lists": {
+          "npm module": {
+            "treeState": 1
+          }
+        }
+      }
+    },
+    "code": {
+      "model": {
+        "fileType": "apogee model",
+        "version": 0.3,
+        "name": "SqliteServiceTest",
+        "children": {
+          "main": {
+            "name": "main",
+            "type": "apogee.Folder",
+            "children": {
+              "DATABASE_PATH": {
+                "name": "DATABASE_PATH",
+                "type": "apogee.JsonMember",
+                "updateData": {
+                  "argList": [],
+                  "functionBody": "return DATABASE_INFO.value;",
+                  "supplementalCode": ""
+                }
+              },
+              "getUsers": {
+                "name": "getUsers",
+                "type": "apogee.Folder",
+                "children": {
+                  "requestData": {
+                    "name": "requestData",
+                    "type": "apogee.JsonMember",
+                    "updateData": {
+                      "argList": [],
+                      "functionBody": "return apogeeutil.INVALID_VALUE;",
+                      "supplementalCode": ""
+                    }
+                  },
+                  "responseData": {
+                    "name": "responseData",
+                    "type": "apogee.JsonMember",
+                    "updateData": {
+                      "argList": [],
+                      "functionBody": "let person = apogeeutil.jsonCopy(userInfo.data);\nif(hobbies.data.length > 0) {\n    person.hobbies = hobbies.data;\n}\nreturn person;",
+                      "supplementalCode": ""
+                    }
+                  },
+                  "userInfo": {
+                    "name": "userInfo",
+                    "type": "apogee.Folder",
+                    "children": {
+                      "formData": {
+                        "name": "formData",
+                        "type": "apogee.JsonMember",
+                        "updateData": {
+                          "data": {
+                            "dbPath": "DATABASE_PATH",
+                            "pathType": "simple",
+                            "queryType": "get",
+                            "sql": "SELECT * FROM person WHERE email = ?;",
+                            "sqlType": "value",
+                            "params": "requestParameters",
+                            "parameterType": "simple",
+                            "cached": false,
+                            "openType": "readwrite",
+                            "verbose": true,
+                            "createIfMissing": false
+                          }
+                        }
+                      },
+                      "formResult": {
+                        "name": "formResult",
+                        "type": "apogee.JsonMember",
+                        "updateData": {
+                          "argList": [],
+                          "functionBody": "let output = {};\noutput[\"dbPath\"] = DATABASE_PATH\noutput[\"pathType\"] = \"simple\"\noutput[\"queryType\"] = \"get\"\noutput[\"sql\"] = \"SELECT * FROM person WHERE email = ?;\"\noutput[\"sqlType\"] = \"value\"\noutput[\"params\"] = requestParameters\noutput[\"parameterType\"] = \"simple\"\noutput[\"cached\"] = false\noutput[\"openType\"] = \"readwrite\"\noutput[\"verbose\"] = true\noutput[\"createIfMissing\"] = false\nreturn output;",
+                          "supplementalCode": "",
+                          "contextParentGeneration": 2
+                        }
+                      },
+                      "data": {
+                        "name": "data",
+                        "type": "apogee.SqliteQueryMember"
+                      }
+                    }
+                  },
+                  "hobbies": {
+                    "name": "hobbies",
+                    "type": "apogee.Folder",
+                    "children": {
+                      "formData": {
+                        "name": "formData",
+                        "type": "apogee.JsonMember",
+                        "updateData": {
+                          "data": {
+                            "dbPath": "DATABASE_PATH",
+                            "pathType": "simple",
+                            "queryType": "all",
+                            "sql": "SELECT * FROM hobby WHERE personId = ?;",
+                            "sqlType": "value",
+                            "params": "[userInfo.data.personId]",
+                            "parameterType": "simple",
+                            "cached": false,
+                            "openType": "readwrite",
+                            "verbose": true,
+                            "createIfMissing": false
+                          }
+                        }
+                      },
+                      "formResult": {
+                        "name": "formResult",
+                        "type": "apogee.JsonMember",
+                        "updateData": {
+                          "argList": [],
+                          "functionBody": "let output = {};\noutput[\"dbPath\"] = DATABASE_PATH\noutput[\"pathType\"] = \"simple\"\noutput[\"queryType\"] = \"all\"\noutput[\"sql\"] = \"SELECT * FROM hobby WHERE personId = ?;\"\noutput[\"sqlType\"] = \"value\"\noutput[\"params\"] = [userInfo.data.personId]\noutput[\"parameterType\"] = \"simple\"\noutput[\"cached\"] = false\noutput[\"openType\"] = \"readwrite\"\noutput[\"verbose\"] = true\noutput[\"createIfMissing\"] = false\nreturn output;",
+                          "supplementalCode": "",
+                          "contextParentGeneration": 2
+                        }
+                      },
+                      "data": {
+                        "name": "data",
+                        "type": "apogee.SqliteQueryMember"
+                      }
+                    }
+                  },
+                  "requestParameters": {
+                    "name": "requestParameters",
+                    "type": "apogee.JsonMember",
+                    "updateData": {
+                      "argList": [],
+                      "functionBody": "if(requestData.email) {\n    return [requestData.email]\n}\nelse {\n    return \"\";\n}",
+                      "supplementalCode": ""
+                    }
+                  }
+                }
+              },
+              "DATABASE_INFO": {
+                "name": "DATABASE_INFO",
+                "type": "apogee.Folder",
+                "children": {
+                  "input": {
+                    "name": "input",
+                    "type": "apogee.JsonMember",
+                    "updateData": {
+                      "data": ""
+                    }
+                  },
+                  "value": {
+                    "name": "value",
+                    "type": "apogee.JsonMember",
+                    "updateData": {
+                      "data": "C:\\Dave\\dev\\github\\apogeejs-repos\\test\\sqlite3\\test.db"
+                    }
+                  }
+                },
+                "childrenNotWriteable": true
+              },
+              "SystemFileCell": {
+                "name": "SystemFileCell",
+                "type": "apogee.Folder",
+                "children": {
+                  "input": {
+                    "name": "input",
+                    "type": "apogee.JsonMember",
+                    "updateData": {
+                      "data": ""
+                    }
+                  },
+                  "value": {
+                    "name": "value",
+                    "type": "apogee.JsonMember",
+                    "updateData": {
+                      "data": {
+                        "fileType": "apogee app js workspace",
+                        "version": "0.60",
+                        "references": {
+                          "viewState": {
+                            "treeState": 1,
+                            "lists": {
+                              "npm module": {
+                                "treeState": 0
+                              }
+                            }
+                          }
+                        },
+                        "code": {
+                          "model": {
+                            "fileType": "apogee model",
+                            "version": 0.3,
+                            "name": "SqliteServiceTest",
+                            "children": {
+                              "main": {
+                                "name": "main",
+                                "type": "apogee.Folder",
+                                "children": {
+                                  "DATABASE_PATH": {
+                                    "name": "DATABASE_PATH",
+                                    "type": "apogee.JsonMember",
+                                    "updateData": {
+                                      "argList": [],
+                                      "functionBody": "return DATABASE_INFO.value;",
+                                      "supplementalCode": ""
+                                    }
+                                  },
+                                  "getUsers": {
+                                    "name": "getUsers",
+                                    "type": "apogee.Folder",
+                                    "children": {
+                                      "requestData": {
+                                        "name": "requestData",
+                                        "type": "apogee.JsonMember",
+                                        "updateData": {
+                                          "data": {
+                                            "email": "sutter@intrasix.com"
+                                          }
+                                        }
+                                      },
+                                      "userInfo": {
+                                        "name": "userInfo",
+                                        "type": "apogee.JsonMember",
+                                        "updateData": {
+                                          "argList": [],
+                                          "functionBody": "if(!requestData.email) throw new Error(\"Email missing from request!\");\n\nlet sql = \"SELECT * FROM person WHERE email = ?\";\nlet params = [requestData.email];\n\n//do the query and throw an error if the person is not found.\nreturn dbFunctions.createGetPromise(DATABASE_PATH,sql,params).then(data => {\n    if(!data.personId) throw new Error(\"person not found!\")\n    else return data;\n});",
+                                          "supplementalCode": ""
+                                        }
+                                      },
+                                      "hobbies": {
+                                        "name": "hobbies",
+                                        "type": "apogee.JsonMember",
+                                        "updateData": {
+                                          "argList": [],
+                                          "functionBody": "let sql = \"SELECT * FROM hobby WHERE personId = ?\";\nlet params = [userInfo.personId];\n\nreturn dbFunctions.createAllPromise(DATABASE_PATH,sql,params);",
+                                          "supplementalCode": ""
+                                        }
+                                      },
+                                      "responseData": {
+                                        "name": "responseData",
+                                        "type": "apogee.JsonMember",
+                                        "updateData": {
+                                          "argList": [],
+                                          "functionBody": "let person = apogeeutil.jsonCopy(userInfo);\nif(hobbies.length > 0) {\n    person.hobbies = hobbies;\n}\nreturn person;",
+                                          "supplementalCode": ""
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "DATABASE_INFO": {
+                                    "name": "DATABASE_INFO",
+                                    "type": "apogee.Folder",
+                                    "children": {
+                                      "input": {
+                                        "name": "input",
+                                        "type": "apogee.JsonMember",
+                                        "updateData": {
+                                          "data": ""
+                                        }
+                                      },
+                                      "value": {
+                                        "name": "value",
+                                        "type": "apogee.JsonMember",
+                                        "updateData": {
+                                          "data": "C:\\Dave\\dev\\github\\apogeejs-repos\\test\\sqlite3\\test.db"
+                                        }
+                                      }
+                                    },
+                                    "childrenNotWriteable": true
+                                  }
+                                }
+                              },
+                              "dbFunctions": {
+                                "name": "dbFunctions",
+                                "type": "apogee.Folder",
+                                "children": {
+                                  "getDbConnection": {
+                                    "name": "getDbConnection",
+                                    "type": "apogee.FunctionMember",
+                                    "updateData": {
+                                      "argList": [
+                                        "dbPath"
+                                      ],
+                                      "functionBody": "//I had a problem where electron would crash if I tried to open a non existent file. This tries to fix that.\r\nvar fs = require('fs');\r\n\r\n//load file if it exists\r\nif(fs.existsSync(dbPath)) {\r\n    const sqlite3 = require('sqlite3').verbose();\r\n\r\n    // open the database\r\n    return new sqlite3.Database(dbPath);\r\n}\r\nelse { \r\n    throw new Error(\"DB file not found: \" + dbPath);\r\n}",
+                                      "supplementalCode": ""
+                                    }
+                                  },
+                                  "createRunPromise": {
+                                    "name": "createRunPromise",
+                                    "type": "apogee.FunctionMember",
+                                    "updateData": {
+                                      "argList": [
+                                        "dbPath",
+                                        "sql",
+                                        "params"
+                                      ],
+                                      "functionBody": "if(!params) params = [];\n\nreturn new Promise( (resolve,reject) => {\n    const sqlite3 = require('sqlite3').verbose();\n\n    // open the database\n    let db = getDbConnection(dbPath);\n    \n    db.all(sql, params, (err, rows) => {\n        try {\n            if(err) {\n                reject(err.toString());\n            }\n            else {\n                resolve(\"OK\");\n            }\n        }\n        catch(error) {\n            if(error.stack) console.error(error.stack);\n            reject(error.toString());\n        }\n    });\n    \n    // close the database connection\n    db.close();\n})",
+                                      "supplementalCode": ""
+                                    }
+                                  },
+                                  "createAllPromise": {
+                                    "name": "createAllPromise",
+                                    "type": "apogee.FunctionMember",
+                                    "updateData": {
+                                      "argList": [
+                                        "dbPath",
+                                        "sql",
+                                        "params"
+                                      ],
+                                      "functionBody": "if(!params) params = [];\n\nreturn new Promise( (resolve,reject) => {\n    const sqlite3 = require('sqlite3').verbose();\n\n    // open the database\n    let db = getDbConnection(dbPath);\n    \n    \n    db.all(sql, params, (err, rows) => {\n        try {\n            if(err) {\n                reject(err.toString());\n            }\n            else {\n                let data = [];\n                rows.forEach((row) => {\n                    let entry = {};\n                    for(let columnName in row) {\n                        entry[columnName] = row[columnName];\n                    }\n                    data.push(row);\n                });\n                resolve(data);\n            }\n        }\n        catch(error) {\n            if(error.stack) console.error(error.stack);\n            reject(error.toString());\n        }\n    });\n    \n    // close the database connection\n    db.close();\n})",
+                                      "supplementalCode": ""
+                                    }
+                                  },
+                                  "createGetPromise": {
+                                    "name": "createGetPromise",
+                                    "type": "apogee.FunctionMember",
+                                    "updateData": {
+                                      "argList": [
+                                        "dbPath",
+                                        "sql",
+                                        "params"
+                                      ],
+                                      "functionBody": "if(!params) params = [];\n\nreturn new Promise( (resolve,reject) => {\n    const sqlite3 = require('sqlite3').verbose();\n\n    // open the database\n    let db = getDbConnection(dbPath);\n    \n    \n    db.get(sql, params, (err, row) => {\n        try {\n            if(err) {\n                reject(err.toString());\n            }\n            else {\n                let entry = {};\n                for(let columnName in row) {\n                    entry[columnName] = row[columnName];\n                }\n                resolve(entry);\n            }\n        }\n        catch(error) {\n            if(error.stack) console.error(error.stack);\n            reject(error.toString());\n        }\n    });\n    \n    // close the database connection\n    db.close();\n})",
+                                      "supplementalCode": ""
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "components": {
+                            "main": {
+                              "type": "apogeeapp.PageComponent",
+                              "data": {
+                                "doc": {
+                                  "type": "doc",
+                                  "content": [
+                                    {
+                                      "type": "heading1",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "Test Workspace"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "heading2",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "Database"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "\"../../../../../test/sqlite3/test.db\""
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "apogeeComponent",
+                                      "attrs": {
+                                        "name": "DATABASE_PATH",
+                                        "id": 0,
+                                        "state": ""
+                                      }
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "This does a few things I haven't done before:"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "bulletList",
+                                      "content": [
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "It is a data form, but I don't edit the data from the form. Instead I use a submit button that will write data to the value member."
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "The data I write is a selected file."
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "apogeeComponent",
+                                      "attrs": {
+                                        "name": "DATABASE_INFO",
+                                        "id": 0,
+                                        "state": ""
+                                      }
+                                    },
+                                    {
+                                      "type": "paragraph"
+                                    }
+                                  ]
+                                }
+                              },
+                              "children": {
+                                "DATABASE_PATH": {
+                                  "type": "apogeeapp.JsonCell",
+                                  "dataView": "Colorized",
+                                  "viewState": {
+                                    "childDisplayState": {
+                                      "views": {
+                                        "Info": {
+                                          "isViewActive": true
+                                        },
+                                        "Data": {
+                                          "isViewActive": true,
+                                          "height": 280
+                                        },
+                                        "Formula": {
+                                          "isViewActive": true,
+                                          "height": 7000
+                                        },
+                                        "Private": {
+                                          "isViewActive": false
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "getUsers": {
+                                  "type": "apogeeapp.PageComponent",
+                                  "data": {
+                                    "doc": {
+                                      "type": "doc",
+                                      "content": [
+                                        {
+                                          "type": "heading1",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "Get Users Endpoint"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "paragraph",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "This is the request body:"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "apogeeComponent",
+                                          "attrs": {
+                                            "name": "requestData",
+                                            "id": 0,
+                                            "state": ""
+                                          }
+                                        },
+                                        {
+                                          "type": "paragraph",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "This is the response. It combines the user info and his list of hobbies."
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "apogeeComponent",
+                                          "attrs": {
+                                            "name": "responseData",
+                                            "id": 0,
+                                            "state": ""
+                                          }
+                                        },
+                                        {
+                                          "type": "heading2",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "Internals"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "paragraph",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "This is a query to look up the user."
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "apogeeComponent",
+                                          "attrs": {
+                                            "name": "userInfo",
+                                            "id": 0,
+                                            "state": ""
+                                          }
+                                        },
+                                        {
+                                          "type": "paragraph",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "This is a query to lookup the users hobbies."
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "apogeeComponent",
+                                          "attrs": {
+                                            "name": "hobbies",
+                                            "id": 0,
+                                            "state": ""
+                                          }
+                                        },
+                                        {
+                                          "type": "paragraph"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "children": {
+                                    "requestData": {
+                                      "type": "apogeeapp.JsonCell",
+                                      "dataView": "Colorized",
+                                      "viewState": {
+                                        "childDisplayState": {
+                                          "views": {
+                                            "Info": {
+                                              "isViewActive": true
+                                            },
+                                            "Data": {
+                                              "isViewActive": true,
+                                              "height": 280
+                                            },
+                                            "Formula": {
+                                              "isViewActive": false
+                                            },
+                                            "Private": {
+                                              "isViewActive": false
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "userInfo": {
+                                      "type": "apogeeapp.JsonCell",
+                                      "dataView": "Colorized",
+                                      "viewState": {
+                                        "childDisplayState": {
+                                          "views": {
+                                            "Info": {
+                                              "isViewActive": true
+                                            },
+                                            "Data": {
+                                              "isViewActive": true,
+                                              "height": 280
+                                            },
+                                            "Formula": {
+                                              "isViewActive": true,
+                                              "height": 7000
+                                            },
+                                            "Private": {
+                                              "isViewActive": false
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "hobbies": {
+                                      "type": "apogeeapp.JsonCell",
+                                      "dataView": "Colorized",
+                                      "viewState": {
+                                        "childDisplayState": {
+                                          "views": {
+                                            "Info": {
+                                              "isViewActive": true
+                                            },
+                                            "Data": {
+                                              "isViewActive": true,
+                                              "height": 280
+                                            },
+                                            "Formula": {
+                                              "isViewActive": true,
+                                              "height": 7000
+                                            },
+                                            "Private": {
+                                              "isViewActive": false
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "responseData": {
+                                      "type": "apogeeapp.JsonCell",
+                                      "dataView": "Colorized",
+                                      "viewState": {
+                                        "childDisplayState": {
+                                          "views": {
+                                            "Info": {
+                                              "isViewActive": true
+                                            },
+                                            "Data": {
+                                              "isViewActive": true,
+                                              "height": 280
+                                            },
+                                            "Formula": {
+                                              "isViewActive": true,
+                                              "height": 7000
+                                            },
+                                            "Private": {
+                                              "isViewActive": false
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "viewState": {
+                                    "childDisplayState": null,
+                                    "treeState": 1,
+                                    "tabOpened": true
+                                  }
+                                },
+                                "DATABASE_INFO": {
+                                  "type": "apogeeapp.NewDataFormCell",
+                                  "layoutCode": "let onSubmit = () => {\n    var {dialog} = require('electron').remote;\n\n    let pathPromise = dialog.showOpenDialog({properties: ['openFile']})\n        .then( fileOpenResult => {\n            if(fileOpenResult.canceled) {\n                //canceled - no action\n                return;\n            }\n        \telse if(fileOpenResult.filePaths.length === 1) {\n        \t    commandMessenger.dataCommand(\"DATABASE_INFO.value\",fileOpenResult.filePaths[0]);\n        \t}\n        \telse if(fileOpenResult.filePaths.length > 1) {\n        \t    apogeeUserAlert(\"Multiple file selection not supported!\");\n        \t}\n        \telse {\n        \t    //canceled - no action\n        \t\tapogeeUserAlert(\"Unknown error: no path selected\");\n        \t}\n        })\n        .catch(err => {\n        \tapogeeUserAlert(\"Error getting DB path: \" + err.toString());\n        });\n}\n\nreturn [\n    {\n        type: \"submit\",\n        onSubmit: onSubmit,\n        submitLabel: \"Select DB File\"\n    }    \n]",
+                                  "validatorCode": "return true",
+                                  "viewState": {
+                                    "childDisplayState": {
+                                      "views": {
+                                        "Info": {
+                                          "isViewActive": true
+                                        },
+                                        "form": {
+                                          "isViewActive": true
+                                        },
+                                        "layout": {
+                                          "height": 7000,
+                                          "isViewActive": false
+                                        },
+                                        "validator": {
+                                          "isViewActive": false
+                                        },
+                                        "input": {
+                                          "isViewActive": false
+                                        },
+                                        "inputPrivate": {
+                                          "isViewActive": false
+                                        },
+                                        "value": {
+                                          "isViewActive": true,
+                                          "height": 280
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "viewState": {
+                                "treeState": 1,
+                                "tabOpened": true,
+                                "tabShowing": true
+                              }
+                            },
+                            "dbFunctions": {
+                              "type": "apogeeapp.PageComponent",
+                              "data": {
+                                "doc": {
+                                  "type": "doc",
+                                  "content": [
+                                    {
+                                      "type": "heading1",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "Sqlite3 DB Functions"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "heading2",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "NOTES"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "changes?:"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "bulletList",
+                                      "content": [
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "do not open with OPEN_CREATE? Default to just readwrite? Maybe allow an option for the open mode."
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "listItem"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "heading3",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "Open Mode"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "In the commands below, we can have the option to set the mode on open"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "bulletList",
+                                      "content": [
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "sqlite3.OPEN_READONLY"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "sqlite3.OPEN_READWRITE"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "sqlite3.OPEN_CREATE (create a new database if it doesn't exist)"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "default value is: (sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE)"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "heading3",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "Shared Connection"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "There are two options for opening the connection:"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "bulletList",
+                                      "content": [
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "let db = new sqlite3.Database(dbPath);"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "let db = new sqlite3.shared.Database(dbPath);"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "I should check the implications of this"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "heading3",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "Transactions"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "There is a way to do transactions, which involve multiple statements."
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "bulletList",
+                                      "content": [
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "\"transaction\""
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "statement"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "statement"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "..."
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "listItem",
+                                          "content": [
+                                            {
+                                              "type": "text",
+                                              "text": "\"commit\" or \"rollback\""
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "These should use the same connection (db object)"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "heading2",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "Create Promise Functions"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "apogeeComponent",
+                                      "attrs": {
+                                        "name": "getDbConnection",
+                                        "id": 0,
+                                        "state": ""
+                                      }
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "This function returns a promise that runs a sql query. There is no output given."
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "apogeeComponent",
+                                      "attrs": {
+                                        "name": "createRunPromise",
+                                        "id": 0,
+                                        "state": ""
+                                      }
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "This function returns a promise that runs a sqlite3 \"all\" command. The output is a list of row return values."
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "apogeeComponent",
+                                      "attrs": {
+                                        "name": "createAllPromise",
+                                        "id": 0,
+                                        "state": ""
+                                      }
+                                    },
+                                    {
+                                      "type": "paragraph",
+                                      "content": [
+                                        {
+                                          "type": "text",
+                                          "text": "This function returns a promise that runs a sqlite3 \"get\" command. The output is a single row return value."
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "apogeeComponent",
+                                      "attrs": {
+                                        "name": "createGetPromise",
+                                        "id": 0,
+                                        "state": ""
+                                      }
+                                    },
+                                    {
+                                      "type": "paragraph"
+                                    },
+                                    {
+                                      "type": "paragraph"
+                                    }
+                                  ]
+                                }
+                              },
+                              "children": {
+                                "getDbConnection": {
+                                  "type": "apogeeapp.FunctionCell",
+                                  "viewState": {
+                                    "childDisplayState": {
+                                      "views": {
+                                        "Info": {
+                                          "isViewActive": true
+                                        },
+                                        "Code": {
+                                          "isViewActive": true,
+                                          "height": 7000
+                                        },
+                                        "Private": {
+                                          "isViewActive": false
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "createRunPromise": {
+                                  "type": "apogeeapp.FunctionCell",
+                                  "viewState": {
+                                    "childDisplayState": {
+                                      "views": {
+                                        "Info": {
+                                          "isViewActive": true
+                                        },
+                                        "Code": {
+                                          "isViewActive": true,
+                                          "height": 7000
+                                        },
+                                        "Private": {
+                                          "isViewActive": false
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "createAllPromise": {
+                                  "type": "apogeeapp.FunctionCell",
+                                  "viewState": {
+                                    "childDisplayState": {
+                                      "views": {
+                                        "Info": {
+                                          "isViewActive": true
+                                        },
+                                        "Code": {
+                                          "isViewActive": true,
+                                          "height": 7000
+                                        },
+                                        "Private": {
+                                          "isViewActive": false
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "createGetPromise": {
+                                  "type": "apogeeapp.FunctionCell",
+                                  "viewState": {
+                                    "childDisplayState": {
+                                      "views": {
+                                        "Info": {
+                                          "isViewActive": true
+                                        },
+                                        "Code": {
+                                          "isViewActive": true,
+                                          "height": 7000
+                                        },
+                                        "Private": {
+                                          "isViewActive": false
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "viewState": {
+                                "childDisplayState": null,
+                                "treeState": 1,
+                                "tabOpened": true
+                              }
+                            },
+                            "viewState": {
+                              "treeState": 1
+                            }
+                          }
+                        },
+                        "viewState": {
+                          "treeState": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                "childrenNotWriteable": true
+              },
+              "descriptor": {
+                "name": "descriptor",
+                "type": "apogee.JsonMember",
+                "updateData": {
+                  "data": {
+                    "sqlitetest": {
+                      "source": "deploy/sqlServiceTest.json",
+                      "endpoints": {
+                        "getusers": {
+                          "inputs": {
+                            "queryParams": "main.getUsers.requestData"
+                          },
+                          "output": "main.getUsers.responseData"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "components": {
+        "main": {
+          "type": "apogeeapp.PageComponent",
+          "data": {
+            "doc": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "heading1",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Test Workspace"
+                    }
+                  ]
+                },
+                {
+                  "type": "heading2",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Workspace Descriptor"
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "This is the descriptor for this workspace"
+                    }
+                  ]
+                },
+                {
+                  "type": "apogeeComponent",
+                  "attrs": {
+                    "name": "descriptor",
+                    "id": 0,
+                    "state": ""
+                  }
+                },
+                {
+                  "type": "heading2",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Database"
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "\"../../../../../test/sqlite3/test.db\""
+                    }
+                  ]
+                },
+                {
+                  "type": "apogeeComponent",
+                  "attrs": {
+                    "name": "DATABASE_PATH",
+                    "id": 0,
+                    "state": ""
+                  }
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "This does a few things I haven't done before:"
+                    }
+                  ]
+                },
+                {
+                  "type": "bulletList",
+                  "content": [
+                    {
+                      "type": "listItem",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "It is a data form, but I don't edit the data from the form. Instead I use a submit button that will write data to the value member."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "listItem",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "The data I write is a selected file."
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "apogeeComponent",
+                  "attrs": {
+                    "name": "DATABASE_INFO",
+                    "id": 0,
+                    "state": ""
+                  }
+                },
+                {
+                  "type": "heading2",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Just Messing Around"
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Here I have a cell like above except it opens the file contents. Some changes for a real cell:"
+                    }
+                  ]
+                },
+                {
+                  "type": "bulletList",
+                  "content": [
+                    {
+                      "type": "listItem",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "let the user input the format, json or text. (I couldn't do it here because the member that saves  data is the file, not the metadata."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "listItem",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "I should add a way to save the file again. (Then I need to save the file path! In this case, I should have \"save\", \"save as\" but also \"open\" and \"reload\")"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "listItem",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "I should also monitor the file, maybe possible give he user options for how to do this - monitor/don't monitor; auto reload/warn reload"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "apogeeComponent",
+                  "attrs": {
+                    "name": "SystemFileCell",
+                    "id": 0,
+                    "state": ""
+                  }
+                },
+                {
+                  "type": "paragraph"
+                },
+                {
+                  "type": "paragraph"
+                },
+                {
+                  "type": "paragraph"
+                },
+                {
+                  "type": "paragraph"
+                }
+              ]
+            }
+          },
+          "children": {
+            "DATABASE_PATH": {
+              "type": "apogeeapp.JsonCell",
+              "dataView": "Colorized",
+              "viewState": {
+                "childDisplayState": {
+                  "views": {
+                    "Info": {
+                      "isViewActive": true
+                    },
+                    "Data": {
+                      "isViewActive": true,
+                      "height": 280
+                    },
+                    "Formula": {
+                      "isViewActive": true,
+                      "height": 7000
+                    },
+                    "Private": {
+                      "isViewActive": false
+                    }
+                  }
+                }
+              }
+            },
+            "getUsers": {
+              "type": "apogeeapp.PageComponent",
+              "data": {
+                "doc": {
+                  "type": "doc",
+                  "content": [
+                    {
+                      "type": "heading1",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "Get Users Endpoint"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "This is the query parameters. It should hold the following:"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "bulletList",
+                      "content": [
+                        {
+                          "type": "listItem",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "\"email\" - The email for the user"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "apogeeComponent",
+                      "attrs": {
+                        "name": "requestData",
+                        "id": 0,
+                        "state": ""
+                      }
+                    },
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "This is the response. It combines the user info and his list of hobbies."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "apogeeComponent",
+                      "attrs": {
+                        "name": "responseData",
+                        "id": 0,
+                        "state": ""
+                      }
+                    },
+                    {
+                      "type": "heading2",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "Internals"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "apogeeComponent",
+                      "attrs": {
+                        "name": "requestParameters",
+                        "id": 0,
+                        "state": ""
+                      }
+                    },
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "This is a query to look up the user."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "apogeeComponent",
+                      "attrs": {
+                        "name": "userInfo",
+                        "id": 0,
+                        "state": ""
+                      }
+                    },
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "This is a query to lookup the users hobbies."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "apogeeComponent",
+                      "attrs": {
+                        "name": "hobbies",
+                        "id": 0,
+                        "state": ""
+                      }
+                    },
+                    {
+                      "type": "paragraph"
+                    }
+                  ]
+                }
+              },
+              "children": {
+                "requestData": {
+                  "type": "apogeeapp.JsonCell",
+                  "dataView": "Colorized",
+                  "viewState": {
+                    "childDisplayState": {
+                      "views": {
+                        "Info": {
+                          "isViewActive": true
+                        },
+                        "Data": {
+                          "isViewActive": true,
+                          "height": 280
+                        },
+                        "Formula": {
+                          "isViewActive": true,
+                          "height": 7000
+                        },
+                        "Private": {
+                          "isViewActive": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "responseData": {
+                  "type": "apogeeapp.JsonCell",
+                  "dataView": "Colorized",
+                  "viewState": {
+                    "childDisplayState": {
+                      "views": {
+                        "Info": {
+                          "isViewActive": true
+                        },
+                        "Data": {
+                          "isViewActive": true,
+                          "height": 280
+                        },
+                        "Formula": {
+                          "isViewActive": true,
+                          "height": 7000
+                        },
+                        "Private": {
+                          "isViewActive": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "userInfo": {
+                  "type": "apogeeapp.SqliteQueryCell",
+                  "viewState": {
+                    "childDisplayState": {
+                      "views": {
+                        "Info": {
+                          "isViewActive": true
+                        },
+                        "Result": {
+                          "isViewActive": true,
+                          "height": 280
+                        },
+                        "Input": {
+                          "isViewActive": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "hobbies": {
+                  "type": "apogeeapp.SqliteQueryCell",
+                  "viewState": {
+                    "childDisplayState": {
+                      "views": {
+                        "Info": {
+                          "isViewActive": true
+                        },
+                        "Result": {
+                          "isViewActive": true,
+                          "height": 280
+                        },
+                        "Input": {
+                          "isViewActive": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "requestParameters": {
+                  "type": "apogeeapp.JsonCell",
+                  "dataView": "Colorized",
+                  "viewState": {
+                    "childDisplayState": {
+                      "views": {
+                        "Info": {
+                          "isViewActive": true
+                        },
+                        "Data": {
+                          "isViewActive": true,
+                          "height": 280
+                        },
+                        "Formula": {
+                          "isViewActive": true,
+                          "height": 7000
+                        },
+                        "Private": {
+                          "isViewActive": false
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "viewState": {
+                "childDisplayState": null,
+                "treeState": 1,
+                "tabOpened": true,
+                "tabShowing": true
+              }
+            },
+            "DATABASE_INFO": {
+              "type": "apogeeapp.NewDataFormCell",
+              "layoutCode": "let onSubmit = () => {\n    var {dialog} = require('electron').remote;\n\n    let pathPromise = dialog.showOpenDialog({properties: ['openFile']})\n        .then( fileOpenResult => {\n            if(fileOpenResult.canceled) {\n                //canceled - no action\n                return;\n            }\n        \telse if(fileOpenResult.filePaths.length === 1) {\n        \t    commandMessenger.dataCommand(\"DATABASE_INFO.value\",fileOpenResult.filePaths[0]);\n        \t}\n        \telse if(fileOpenResult.filePaths.length > 1) {\n        \t    apogeeUserAlert(\"Multiple file selection not supported!\");\n        \t}\n        \telse {\n        \t    //canceled - no action\n        \t\tapogeeUserAlert(\"Unknown error: no path selected\");\n        \t}\n        })\n        .catch(err => {\n        \tapogeeUserAlert(\"Error getting DB path: \" + err.toString());\n        });\n}\n\nreturn [\n    {\n        type: \"submit\",\n        onSubmit: onSubmit,\n        submitLabel: \"Select DB File\"\n    }    \n]",
+              "validatorCode": "return true",
+              "viewState": {
+                "childDisplayState": {
+                  "views": {
+                    "Info": {
+                      "isViewActive": true
+                    },
+                    "form": {
+                      "isViewActive": true
+                    },
+                    "layout": {
+                      "height": 7000,
+                      "isViewActive": false
+                    },
+                    "validator": {
+                      "isViewActive": false
+                    },
+                    "input": {
+                      "isViewActive": false
+                    },
+                    "inputPrivate": {
+                      "isViewActive": false
+                    },
+                    "value": {
+                      "isViewActive": true,
+                      "height": 280
+                    }
+                  }
+                }
+              }
+            },
+            "SystemFileCell": {
+              "type": "apogeeapp.NewDataFormCell",
+              "layoutCode": "let onFileOpen = (err,data,fileFormat) => {\n    if(err) {\n        return new Error(\"Error reading file data: \" + err);\n    }\n    else {\n        //I think i need better error handling\n        let fileData = fileFormat == \"json\" ? JSON.parse(data) : data;\n        commandMessenger.dataCommand(\"SystemFileCell.value\",fileData);\n    }\n}\n\nlet onOpen = formValue => {\n    var {dialog} = require('electron').remote;\n\n    let pathPromise = dialog.showOpenDialog({properties: ['openFile']})\n        .then( fileOpenResult => {\n            if(fileOpenResult.canceled) {\n                //canceled - no action\n                return;\n            }\n        \telse if(fileOpenResult.filePaths.length === 1) {\n        \t    let filePath = fileOpenResult.filePaths[0];\n        \t    var fs = require('fs');\n\t\t\t\tfs.readFile(filePath,'utf8',(err,data) => onFileOpen(err,data,formValue.fileFormat));\n        \t}\n        \telse if(fileOpenResult.filePaths.length > 1) {\n        \t    apogeeUserAlert(\"Multiple file selection not supported!\");\n        \t}\n        \telse {\n        \t    //canceled - no action\n        \t\tapogeeUserAlert(\"Unknown error: no path selected\");\n        \t}\n        })\n        .catch(err => {\n        \tapogeeUserAlert(\"Error getting DB path: \" + err.toString());\n        });\n}\n\nreturn [\n    //oops - this will be saved in this form as value, which we don't wnt\n    //if I make a real one, I can add a separate save location\n    // {\n    //     type: \"radioButtonGroup\",\n    //     label: \"File Format: \",\n    //     entries: [[\"JSON\",\"json\"],[\"Text\",\"text\"]],\n    //     value: \"json\",\n    //     key: \"fileFormat\"\n    // },\n    {\n        type: \"invisible\",\n        value: \"json\",\n        key: \"fileFormat\"\n    },\n    {\n        type: \"submit\",\n        onSubmit: onOpen,\n        submitLabel: \"Open File\"\n    }\n]",
+              "validatorCode": "return true",
+              "viewState": {
+                "childDisplayState": {
+                  "views": {
+                    "Info": {
+                      "isViewActive": true
+                    },
+                    "form": {
+                      "isViewActive": true
+                    },
+                    "layout": {
+                      "height": 7000,
+                      "isViewActive": false
+                    },
+                    "validator": {
+                      "isViewActive": false
+                    },
+                    "input": {
+                      "isViewActive": false
+                    },
+                    "inputPrivate": {
+                      "isViewActive": false
+                    },
+                    "value": {
+                      "isViewActive": true,
+                      "height": 280
+                    }
+                  }
+                }
+              }
+            },
+            "descriptor": {
+              "type": "apogeeapp.JsonCell",
+              "dataView": "Colorized",
+              "viewState": {
+                "childDisplayState": {
+                  "views": {
+                    "Info": {
+                      "isViewActive": true
+                    },
+                    "Data": {
+                      "isViewActive": true,
+                      "height": 280
+                    },
+                    "Formula": {
+                      "isViewActive": false
+                    },
+                    "Private": {
+                      "isViewActive": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "viewState": {
+            "treeState": 1,
+            "tabOpened": true
+          }
+        },
+        "viewState": {
+          "treeState": 1
+        }
+      }
+    },
+    "viewState": {
+      "treeState": 1
+    }
+  }

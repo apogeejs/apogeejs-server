@@ -1,4 +1,5 @@
 const express = require('express');
+const { ThrowStatement } = require('../apogeejs-model-lib/src/apogeejs-model-lib');
 const { ActionRunner } = require('./ActionRunner');
 const { WorkspaceHandler } = require('./WorkspaceHandler');
 
@@ -92,7 +93,7 @@ class WorkspaceManager {
             this.workspaceReady = true;
         }
         catch(error) {
-            this._handleSetupError("Error loading workspace: " + error.message);
+            this._handleSetupError("Error loading workspace " + this.getDisplayString() + ": " + error.toString());
         }
     }
     
@@ -133,7 +134,7 @@ class WorkspaceManager {
             workspaceHandler.handleRequest(request,response,endpointInfo);
         }
         catch(error) {
-            response.status(500).send("Unknown error processing request: " + error.message);
+            response.status(500).send("Unknown error processing request: " + error.toString());
         }
     }
 
@@ -190,6 +191,7 @@ class WorkspaceManager {
 
         //populate the workspace information
         this.workspaceName = this.workspaceDescriptor.name;
+        if(!this.workspaceName) throw new Error("Missing name in workspace descriptor");
         this.settings = this.workspaceDescriptor.settings ? this.workspaceDescriptor.settings : {};
 
         //populate the endpoint information
@@ -197,6 +199,7 @@ class WorkspaceManager {
         this.endpointDescriptorArray.forEach(endpointDescriptor => {
             //create the endpoint info
             let endpointName = endpointDescriptor.name;
+            if(!endpointName) throw new Error("Missing name in endpoint descriptor");
             let endpointInfo = {};
 
             //get the input member ids, if applicable
@@ -214,6 +217,11 @@ class WorkspaceManager {
                 endpointInfo.headerKeys = endpointDescriptor.headerKeys
             }
 
+            //make sure there is an input or output
+            if((endpointInfo.outputId === undefined)&&(apogeeutil.jsonObjectLength(endpointInfo.inputId) == 0)) throw new Error("No inputs or outputs - endpoint name: " + endpointName)
+
+            //make sure endpoint names unique (this will change when we add method!!)
+            if(this.endpointInfoMap[endpointName]) throw new Error("Duplicate endpoint name: " + endpointName);
             this.endpointInfoMap[endpointName] = endpointInfo;
 
             //add endpoints to the router
@@ -270,7 +278,6 @@ class WorkspaceManager {
             if(member.isMember) {
                 if(member.getName().startsWith("_workspaceDescriptor")) {
                     this.workspaceDescriptor = member.getData();
-                    this.workspaceName = this.workspaceDescriptor.name;
                 }
                 else if(member.getName().startsWith("_endpointDescriptor")) {
                     let endpointDescriptor = member.getData();
@@ -278,6 +285,10 @@ class WorkspaceManager {
                 }
             }
         }
+
+        //some error checking
+        if(!this.workspaceDescriptor) throw new Error("Workspace descriptor missing!");
+        if(this.endpointDescriptorArray.length == 0) throw new Error("No endpoint descriptors found!");
     }
 
 }
