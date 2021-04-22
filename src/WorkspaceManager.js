@@ -1,5 +1,4 @@
 const express = require('express');
-const { ThrowStatement } = require('../apogeejs-model-lib/src/apogeejs-model-lib');
 const { ActionRunner } = require('./ActionRunner');
 const { WorkspaceHandler } = require('./WorkspaceHandler');
 
@@ -197,40 +196,43 @@ class WorkspaceManager {
         //populate the endpoint information
         this.endpointInfoMap = {};
         this.endpointDescriptorArray.forEach(endpointDescriptor => {
-            //create the endpoint info
-            let endpointName = endpointDescriptor.name;
-            if(!endpointName) throw new Error("Missing name in endpoint descriptor");
             let endpointInfo = {};
 
-            //get the input member ids, if applicable
+            let endpointName = endpointDescriptor.name;
+            if(!endpointName) throw new Error("Missing name in endpoint descriptor");
+            if(this.endpointInfoMap[endpointName]) throw new Error("Duplicate endpoint name: " + endpointName);
+            
+            endpointInfo.path = endpointDescriptor.path;
+            if(!endpointInfo.path) throw new Error("Missing path in endpoint descriptor");
+
             endpointInfo.inputIds = {};
             if(endpointDescriptor.inputs) {
                 this._loadMemberIds(endpointDescriptor.inputs,endpointInfo.inputIds);
             }
             
-            //get the return value member id, if applicable
             if(endpointDescriptor.output) {
                 endpointInfo.outputId = this._getMemberId(endpointDescriptor.output);
             }
 
+            //either input or output can be missing, but not both
+            if((endpointInfo.outputId === undefined)&&(apogeeutil.jsonObjectLength(endpointInfo.inputIds) == 0)) throw new Error("No inputs or outputs - endpoint name: " + endpointName)
+
+            //if we have header inputs, desired keys should be specified
             if(endpointDescriptor.headerKeys) {
                 endpointInfo.headerKeys = endpointDescriptor.headerKeys
             }
 
-            //make sure there is an input or output
-            if((endpointInfo.outputId === undefined)&&(apogeeutil.jsonObjectLength(endpointInfo.inputId) == 0)) throw new Error("No inputs or outputs - endpoint name: " + endpointName)
-
-            //make sure endpoint names unique (this will change when we add method!!)
-            if(this.endpointInfoMap[endpointName]) throw new Error("Duplicate endpoint name: " + endpointName);
-            this.endpointInfoMap[endpointName] = endpointInfo;
-
             //add endpoints to the router
             let handlerFunction = (request,response) => this._processRequest(endpointName,request,response);
-            let path = "/" + endpointName;
-            //for now we are automatically adding a listener for get and post. We might want to make
-            //this optional or at least dependent on whether or not there is a body
-            this.router.post(path,handlerFunction);
-            this.router.get(path,handlerFunction);
+            endpointInfo.methods = endpointDescriptor.method ? [endpointDescriptor.method] : endpointDescriptor.methods;
+            if((!endpointInfo.methods)||(endpointInfo.methods.length == 0)) throw new Error("No methods specified for endpoint: " + endpointName);
+            endpointInfo.methods.forEach(method => {
+                method = method.toLowerCase();
+                if(WorkspaceManager.SUPPORTED_METHODS.indexOf(method) < 0) throw new Error(`Unsupported method ${method} in endpoint ${endpointName}`);
+                this.router[method](endpointInfo.path,handlerFunction);
+            })
+
+            this.endpointInfoMap[endpointName] = endpointInfo;
         });
     }
 
@@ -296,6 +298,36 @@ class WorkspaceManager {
 //this is the supported version of the workspace.
 WorkspaceManager.SUPPORTED_WORKSPACE_VERSION = "0.60";
 WorkspaceManager.SUPPORTED_MODEL_VERSION = 0.3;
+
+//these are the supported mehods for the service 
+//it should just be the list of methods from Express, plus "all"
+//We should preferbly let Express tell use which methods they support, for when the add new methods
+WorkspaceManager.SUPPORTED_METHODS = [
+    "all",
+    "checkout",
+    "copy",
+    "delete",
+    "get",
+    "head",
+    "lock",
+    "merge",
+    "mkactivity",
+    "mkcol",
+    "move",
+    "m-search",
+    "notify",
+    "options",
+    "patch",
+    "post",
+    "purge",
+    "put",
+    "report",
+    "search",
+    "subscribe",
+    "trace",
+    "unlock",
+    "unsubscribe"
+]
 
 module.exports.WorkspaceManager = WorkspaceManager;
 

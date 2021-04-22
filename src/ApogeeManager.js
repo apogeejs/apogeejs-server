@@ -15,11 +15,10 @@ class ApogeeManager {
      * and such. It should typically be the path to this handler. 
      */
     constructor() {  
-        this.descriptor = null;
         this.settings = null;
-        this.handlerStubs = {};
         this.deployDir = null;
         this.loadedModules = {};
+        this.workspaceManagers = [];
 
         this.router = null;
         this.handler = (req,res,next) => {
@@ -32,11 +31,10 @@ class ApogeeManager {
         return this.handler;
     }
     
-    /** This method initializes the handler with the descriptor json. */
+    /** This method initializes the service, loading all workspaces in the deploy directory. */
     async init(deployDir) {
         //init some variables
         this.router = express.Router();
-        this.handlerStubs = {};
         this.deployDir = deployDir;
 
         //load workspaces
@@ -51,12 +49,11 @@ class ApogeeManager {
 
         //store the workspaces and add them to the router
         await Promise.all(workspaceManagerPromises).then(workspaceManagers => {
+            this.workspaceManagers = workspaceManagers;
             workspaceManagers.forEach(workspaceManager => {
-                let workspaceName = workspaceManager.getName();
-                if(workspaceName) {
-                    if(this.handlerStubs[workspaceName]) throw new Error("Duplicate workspaces: " + workspaceName);
-                    this.handlerStubs[workspaceName] = workspaceManager;
-                    this.router.use("/" + workspaceName,workspaceManager.getHandler());
+                let handler = workspaceManager.getHandler();
+                if(handler) {
+                    this.router.use(handler);
                 }
             })
         });
@@ -66,9 +63,9 @@ class ApogeeManager {
 
     /** This method loads modules as needed, making sure each is loaded only once on thi server. 
      * @arg moduleList - This the the refEntries list from the workspace
-     * @arg workspaceName - The name of the workspace requesting the modules.
+     * @arg workspaceKey - The name of the workspace requesting the modules.
     */
-    loadModules(moduleList,workspaceName) {
+    loadModules(moduleList,workspaceKey) {
         moduleList.forEach(moduleEntry => {
             //we will only load npm modules
             if(moduleEntry.entryType == "npm module") {
@@ -80,7 +77,7 @@ class ApogeeManager {
                     this.loadedModules[moduleName] = [];
                 }
                 //record this workspace as a user for this module
-                this.loadedModules[moduleName].push(workspaceName);
+                this.loadedModules[moduleName].push(workspaceKey);
             }
         })
     }
@@ -88,9 +85,9 @@ class ApogeeManager {
     /** This method should be called when a workspace is being undeployed. It will remove and modules that 
      * are no longer needed on this server. 
      * @arg moduleList - This the the refEntries list from the workspace
-     * @arg workspaceName - The name of the workspace requesting the modules.
+     * @arg workspaceKey - The name of the workspace requesting the modules.
      */
-    unloadModules(moduleList,workspaceName) {
+    unloadModules(moduleList,workspaceKey) {
         //for now we have no unload. If we add dynamic deploy we will want to add this.
         throw new Error("Implement unload modules! (Once we get dynamic deploy functionality)");
     }
@@ -98,11 +95,10 @@ class ApogeeManager {
     /** This method should be called to shut down the server. */
     shutdown() {
         //this doesn't actually shutdown server right now
-        for(let workspaceName in this.handlerStubs) {
-            let workspaceManager = this.handlerStubs[workspaceName];
+        this.workspaceManagers.forEach(workspaceManager => {
             workspaceManager.shutdown();
-        }
-        this.handlerStubs = {};
+        })
+        //this.workspaceManager = [];
     }
     
     //================================
@@ -143,7 +139,7 @@ ApogeeManager.GLOBAL_SETTINGS = {
 }
 
 /** This method returns an Apogee instance, which will be asynchronously
- * initialized when the descriptor file is loaded. */
+ * initialized when the workspaces are loaded. */
 module.exports.ApogeeManager = ApogeeManager;
 
 

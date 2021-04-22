@@ -98,6 +98,11 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
             inputDataMap.queryParams = request.query; 
         }
 
+        //get query params if applicable
+        if(endpointInfo.inputIds.pathParams) {
+            inputDataMap.pathParams = request.params; 
+        }
+
         //this gets the requested header parameters
         if((endpointInfo.inputIds.headers)&&(endpointInfo.headerKeys)) {
             let headerData = {};

@@ -53,6 +53,14 @@ async function startServer() {
         //===========================
         const app = express();
 
+        //cross origin headers
+        app.use(function(req, res, next) {
+            res.header("Access-Control-Allow-Origin", "*"); // update to match the domain you will make the request from
+            res.header("Access-Control-Allow-Methods", "*");
+            res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+            next();
+        });
+
         //--------------
         //file server
         //--------------
@@ -66,15 +74,6 @@ async function startServer() {
         //parse json body of requests
         app.use(express.json()) // for parsing application/json
         app.use(express.text()); //for parsing plain.text
-
-        //cross origin headers
-        app.use(function(req, res, next) {
-            res.header("Access-Control-Allow-Origin", "*"); // update to match the domain you will make the request from
-            res.header("Access-Control-Allow-Methods", "POST, GET");
-            res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-            next();
-        });
-
 
         //apogee endpoint initialization
         const apogeeManager = new ApogeeManager();
