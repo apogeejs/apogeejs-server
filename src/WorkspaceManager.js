@@ -60,6 +60,14 @@ class WorkspaceManager {
         else return "worskpace key " + this.uniqueKey;
     }
 
+    hasError() {
+        return this.workspaceError;
+    }
+
+    getErrorMessage() {
+        return this.workspaceErrorMsg;
+    }
+
     /** This returns the handler for request to this workspace. */
     getHandler() {
         return this.handler;

@@ -56,13 +56,16 @@ class ApogeeManager {
     async deploy(workspaceJson) {
         let deployedWorkspace = new WorkspaceManager(this,"<deployed workspace>");
         await deployedWorkspace.initWorkspace(workspaceJson);
-        this._spliceAndPublishWorkspaces(deployedWorkspace,null);
+        if(deployedWorkspace.hasError()) {
+            throw new Error(deployedWorkspace.getErrorMessage());
+        }
+        return this._spliceAndPublishWorkspaces(deployedWorkspace,null);
     }
 
     /** This method deploys the given workspace json, undeploying an existing workspace if
      * it has the same name. */
      undeploy(workspaceName) {
-        this._spliceAndPublishWorkspaces(null,workspaceName);
+        return this._spliceAndPublishWorkspaces(null,workspaceName);
     }
 
     /** This method loads modules as needed, making sure each is loaded only once on thi server. 
@@ -111,20 +114,24 @@ class ApogeeManager {
 
     /** This method updates the published workspaces.
      * - To deploy a new workspace, pass the newWorkspaceManager. The passed undeploy name will be ignored.
-     * - TO undeploy an existing workspace, pass the name of the workspace to undeploy. Levae the newWorkspaceManager falsey. 
+     * - TO undeploy an existing workspace, pass the name of the workspace to undeploy. Leave the newWorkspaceManager falsey. 
      */
      _spliceAndPublishWorkspaces(newWorkspaceManager,undeployName) {
+        let workspaceDeployed = false;
+        let workspaceUndeployed = false;
         let undeployedWorkspace = null;
         let newWorkspaceManagers = [];
 
         if(newWorkspaceManager) {
             newWorkspaceManagers.push(newWorkspaceManager);
             undeployName = newWorkspaceManager.getName();
+            workspaceDeployed = true;
         }
 
         this.workspaceManagers.forEach(workspaceManager => {
             if(workspaceManager.getName() == undeployName) {
                 undeployedWorkspace = workspaceManager;
+                workspaceUndeployed = true;
             }
             else {
                 newWorkspaceManagers.push(workspaceManager);
@@ -138,7 +145,25 @@ class ApogeeManager {
         //we need to implement this!!!
         //-> don't kill while it is in use and make sure it is properly cleaned up
         //===============
-        if(undeployedWorkspace) undeployedWorkspace.shutdown();
+        if(undeployedWorkspace) {
+            undeployedWorkspace.shutdown();
+        }
+
+        //create messages
+        let messages = [];
+        if(newWorkspaceManager) {
+            if(workspaceDeployed) messages.push("Workspace deployed: " + newWorkspaceManager.getName());
+            if(workspaceUndeployed) messages.push("Old workspace undeployed"); 
+        }
+        else if(undeployName) {
+            if(workspaceUndeployed) messages.push("Workspace undeployed: " + undeployName); 
+            else messages.push("Undeploy workspace not found: " + undeployName + "!");
+        }
+        else {
+            messages.push("No action taken");
+        }
+
+        return messages.join("; ");
     }
 
     /** This method sets the given workspaces as active. */

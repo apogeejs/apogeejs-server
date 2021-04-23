@@ -48,7 +48,7 @@ startServer();
 /** This function deplow a workspace. */
 __globals__.deploy = async function(workspaceJson) {
     if(apogeeManager) {
-        await apogeeManager.deploy(workspaceJson)
+        return await apogeeManager.deploy(workspaceJson)
     }
     else {
         throw new Error("Service not properly initialized for deploy!")
@@ -58,7 +58,7 @@ __globals__.deploy = async function(workspaceJson) {
 /** This function undeploys a workspace. */
 __globals__.undeploy = function(workspaceName) {
     if(apogeeManager) {
-        apogeeManager.undeploy(workspaceName);
+        return apogeeManager.undeploy(workspaceName);
     }
     else {
         throw new Error("Service not properly initialized for deploy!")
