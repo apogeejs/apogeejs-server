@@ -33,8 +33,6 @@ class ApogeeManager {
     
     /** This method initializes the service, loading all workspaces in the deploy directory. */
     async init(deployDir) {
-        //init some variables
-        this.router = express.Router();
         this.deployDir = deployDir;
 
         //load workspaces
@@ -48,17 +46,23 @@ class ApogeeManager {
         });
 
         //store the workspaces and add them to the router
-        await Promise.all(workspaceManagerPromises).then(workspaceManagers => {
-            this.workspaceManagers = workspaceManagers;
-            workspaceManagers.forEach(workspaceManager => {
-                let handler = workspaceManager.getHandler();
-                if(handler) {
-                    this.router.use(handler);
-                }
-            })
-        });
+        await Promise.all(workspaceManagerPromises).then(workspaceManagers => this._publishWorkspaces(workspaceManagers));
 
         return true;
+    }
+
+    /** This method deploys the given workspace json, undeploying an existing workspace if
+     * it has the same name. */
+    async deploy(workspaceJson) {
+        let deployedWorkspace = new WorkspaceManager(this,"<deployed workspace>");
+        await deployedWorkspace.initWorkspace(workspaceJson);
+        this._spliceAndPublishWorkspaces(deployedWorkspace,null);
+    }
+
+    /** This method deploys the given workspace json, undeploying an existing workspace if
+     * it has the same name. */
+     undeploy(workspaceName) {
+        this._spliceAndPublishWorkspaces(null,workspaceName);
     }
 
     /** This method loads modules as needed, making sure each is loaded only once on thi server. 
@@ -104,6 +108,52 @@ class ApogeeManager {
     //================================
     // Private Methods
     //================================
+
+    /** This method updates the published workspaces.
+     * - To deploy a new workspace, pass the newWorkspaceManager. The passed undeploy name will be ignored.
+     * - TO undeploy an existing workspace, pass the name of the workspace to undeploy. Levae the newWorkspaceManager falsey. 
+     */
+     _spliceAndPublishWorkspaces(newWorkspaceManager,undeployName) {
+        let undeployedWorkspace = null;
+        let newWorkspaceManagers = [];
+
+        if(newWorkspaceManager) {
+            newWorkspaceManagers.push(newWorkspaceManager);
+            undeployName = newWorkspaceManager.getName();
+        }
+
+        this.workspaceManagers.forEach(workspaceManager => {
+            if(workspaceManager.getName() == undeployName) {
+                undeployedWorkspace = workspaceManager;
+            }
+            else {
+                newWorkspaceManagers.push(workspaceManager);
+            }
+        });
+
+        this._publishWorkspaces(newWorkspaceManagers)
+
+        //===============
+        //shutdown old workspace
+        //we need to implement this!!!
+        //-> don't kill while it is in use and make sure it is properly cleaned up
+        //===============
+        if(undeployedWorkspace) undeployedWorkspace.shutdown();
+    }
+
+    /** This method sets the given workspaces as active. */
+    _publishWorkspaces(workspaceManagers) {
+        let router = express.Router();
+        workspaceManagers.forEach(workspaceManager => {
+            let handler = workspaceManager.getHandler();
+            if(handler) {
+                router.use(handler);
+            }
+        });
+        //publish these services
+        this.router = router;
+        this.workspaceManagers = workspaceManagers;
+    }
    
     /** This method initialized the endpoints.  */
     async _loadWorkspace(fileName) {

@@ -3,7 +3,7 @@
 require("../apogeejs-model-lib/src/nodeGlobals.js");
 require("../apogeejs-model-lib/src/debugHook.js");
 const express = require('express');
-var fsPromises = require('fs/promises');
+const fsPromises = require('fs/promises');
 const path = require('path')
 const {ApogeeManager} = require("./ApogeeManager");
 const apogeeutil = require('../apogeejs-util-lib/src/apogeejs-util-lib.js');
@@ -26,7 +26,7 @@ __globals__.__apogee_globals__ = {
     "require": require
 }
 
-let thisFileDir = path.dirname(process.argv[1]);
+const thisFileDir = path.dirname(process.argv[1]);
 
 const DEFAULT_CONFIG_JSON = {
     serverDirectory: path.join(thisFileDir,".."),
@@ -36,12 +36,36 @@ const DEFAULT_CONFIG_JSON = {
     port: 8000
 }
 
+//this object manages the apogee workspaces
+let apogeeManager = null;
+
 startServer();
 
 //==================================
 // functions
 //==================================
 
+/** This function deplow a workspace. */
+__globals__.deploy = async function(workspaceJson) {
+    if(apogeeManager) {
+        await apogeeManager.deploy(workspaceJson)
+    }
+    else {
+        throw new Error("Service not properly initialized for deploy!")
+    }
+}
+
+/** This function undeploys a workspace. */
+__globals__.undeploy = function(workspaceName) {
+    if(apogeeManager) {
+        apogeeManager.undeploy(workspaceName);
+    }
+    else {
+        throw new Error("Service not properly initialized for deploy!")
+    }
+}
+
+/** This starts the server. */
 async function startServer() {
 
     try {
@@ -76,7 +100,7 @@ async function startServer() {
         app.use(express.text()); //for parsing plain.text
 
         //apogee endpoint initialization
-        const apogeeManager = new ApogeeManager();
+        apogeeManager = new ApogeeManager();
 
         let deployFolderPathAbs = path.join(configJson.serverDirectory,configJson.deployFolder);
         await apogeeManager.init(deployFolderPathAbs);

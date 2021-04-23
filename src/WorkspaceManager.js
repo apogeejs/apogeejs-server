@@ -18,12 +18,12 @@ function getTimestamp() {
 class WorkspaceManager {
 
     /** Constructor */
-    constructor(apogeeManager,fileName) { 
+    constructor(apogeeManager,placeholderName) { 
         this.apogeeManager = apogeeManager;
 
         //identifiers
-        this.workspaceName = null; //TEMPORARY
-        this.fileName = fileName; //TEMPORARY
+        this.workspaceName = null;
+        this.placeholderName = placeholderName;
         this.uniqueKey = apogeeutil.getUniqueString();
         
         //configuration 
@@ -56,7 +56,7 @@ class WorkspaceManager {
     /** This gets a display string for the workspace. */
     getDisplayString() {
         if(this.workspaceName) return this.workspaceName;
-        else if(this.fileName) return "file " + this.fileName;
+        else if(this.placeholderName) return "file " + this.placeholderName;
         else return "worskpace key " + this.uniqueKey;
     }
 
