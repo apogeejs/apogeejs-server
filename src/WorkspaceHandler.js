@@ -50,8 +50,12 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
             //get the action to load the inputs
             let inputAction = this._getInputAction(endpointInfo,inputDataMap);
 
-            //run action with: invalidOk = true and errorMsgPrefix
-            await this.modelManager.runActionOnModel(inputAction,true,"Error executing request: ");
+            //run action with
+            //output ids - output table, if there is one
+            //invalid ok - NO for the output tables, yes if we are only checking completion on root folders
+            let outputIds = endpointInfo.outputId ? [endpointInfo.outputId] : null;
+            let invalidOk =  endpointInfo.outputId ? false : true;
+            await this.modelManager.runActionOnModel(inputAction,outputIds,invalidOk,"Error executing request: ");
 
             //return result
             let resultValue;
@@ -64,7 +68,8 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
 
         }
         catch(error) {
-            this._doErrorResponse("Unknown error: " + error.toString());
+            let errorMsg = error.message ? error.message : error ? error.toString() : "Unknown error";
+            this._doErrorResponse(errorMsg);
         }
     }
 

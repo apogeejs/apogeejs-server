@@ -38,6 +38,9 @@ class ActionRunner {
      * or finished calculation. The action passed in can be null, in which case it immediately checks for completion.
      * The case of no action corresponds to reading static data from the model, with no input.
      * - action - This is the action to run
+     * - outputIds - This is a list of ids that should be checked to see if the calculation is complete (as opposed to 
+     *      pending). If there is no specific output ids, null (or falsey) can be passed and the root folders for the workspace
+     *      will be used to check for calculation completion.
      * - invalidOk - The runner checks the status of the root folders to see if the action is complete. This
      *      flag should be set to true if it is OK that some folders have the state INVAID_VALUE. It will trigger
      *      an error if such a condition is found. Otherwise it will treat this as equivent to the state normal.
@@ -45,15 +48,18 @@ class ActionRunner {
      *      a request.
      * - errorMsgPrefext - This is used to prefix an error message detected in running the action.
      */
-    async runActionOnModel(action,invalidOk,errorMsgPrefix) {
+    async runActionOnModel(action,outputIds,invalidOk,errorMsgPrefix) {
+        if((this.onComplete)||(this.onError)) throw new Error("Illegal internal state - action in progress.");
+
         let actionPromise = new Promise( (resolve,reject) => {
+            this.outputIds = outputIds;
             this.onComplete = () => {
                 resolve();
-                this.onComplete = null;
+                this._cleanup();
             }
             this.onError = errMsg => {
                 reject(errMsg);
-                this.onError = null;
+                this._cleanup();
             }
 
             this._runActionOnModelImpl(action,invalidOk,errorMsgPrefix);
@@ -66,7 +72,16 @@ class ActionRunner {
     // private methods
     //===========================
 
+    /** This should be called internally after an action completes. */
+    _cleanup() {
+        this.outputIds = null;
+        this.onComplete = null;
+        this.onError = null;
+    }
+
     _runActionOnModelImpl(action,invalidOk,errorMsgPrefix) {
+        if((!this.onComplete)||(!this.onError)) throw new Error("Illegal internal state - action not initialized.");
+
         let actionResult;
         //execute the action (if applicable)
         if(action) {
@@ -85,7 +100,7 @@ class ActionRunner {
         }
         else {
             //handle error
-            if(this.onError) this.onError(errorMsgPrefix + actionResult.errorMsg);
+            this.onError(errorMsgPrefix + actionResult.errorMsg);
         }
     }
 
@@ -94,11 +109,12 @@ class ActionRunner {
     _processCompletedAction(invalidOk,errorMsgPrefix) {
         let isPending = false;
 
-        //cycle through all root folders
-        let rootFolderIdMap = this.workingModel.getChildIdMap();
-        for(let childName in rootFolderIdMap) {
-            let childId = rootFolderIdMap[childName];
-            let child = this.workingModel.lookupMemberById(childId);
+        //If there are output ids, determine completion based on those. Otherwise use the root folders.
+        let completionCheckIds = this.outputIds ? this.outputIds : this._getRootFolderIds();
+
+        //cycle through completion members (which we need to check to see if the calc is finished)
+        completionCheckIds.forEach(memberId => {
+            let child = this.workingModel.lookupMemberById(memberId);
             let childState = child.getState();
             switch(childState) {
                 case apogeeutil.STATE_NORMAL:
@@ -106,14 +122,15 @@ class ActionRunner {
                     break;
 
                 case apogeeutil.STATE_ERROR:
-                    //error! (For now exit on first error detected)
-                    if(this.onError) this.onError(errorMsgPrefix + child.getErrorMsg());
+                    //error! 
+                    let errorMsg = this._getModelErrorMessage();
+                    this.onError(errorMsgPrefix + errorMsg);
                     return;
 
                 case apogeeutil.STATE_INVALID:
                     if(!invalidOk) {
                         //if we should not have invalid, flag an error
-                        if(this.orError) this.onError(errorMsgPrefix + "Unknown error - invalid result");
+                        this.onError(errorMsgPrefix + "Unknown error - invalid result");
                         return;
                     }
                     break;
@@ -122,13 +139,42 @@ class ActionRunner {
                     isPending = true;
                     break;
             }
-        }
+        });
 
         //if we get here we are either pending or finished
         if(!isPending) {
             //we are finished
-            if(this.onComplete) this.onComplete();
+            this.onComplete();
         }
+    }
+
+    /** This method loads any errors from within the folder function. 
+     * @private  */
+     _getModelErrorMessage(model) {
+        let memberMap = this.workingModel.getField("memberMap");
+        let errorMessages = [];
+        //load error messages from each non-dependency error in the folder function
+        for(let id in memberMap) {
+            let member = memberMap[id];
+            if((member.isMember)&&(member.getState() == apogeeutil.STATE_ERROR)) {
+                let error = member.getError();
+                if(!error.isDependsOnError) {
+                    let errorDesc = error.message ? error.message : error.toString();
+                    errorMessages.push(`Member '${member.getName()}': ${errorDesc}`);
+                }
+            }
+        }
+        return errorMessages.join("; ");
+
+    }
+
+    _getRootFolderIds() {
+        let rootFolderIds = [];
+        let rootFolderIdMap = this.workingModel.getChildIdMap();
+        for(let childName in rootFolderIdMap) {
+            rootFolderIds.push(rootFolderIdMap[childName]);
+        }
+        return rootFolderIds;
     }
 }
 
