@@ -100,7 +100,8 @@ class WorkspaceManager {
             this.workspaceReady = true;
         }
         catch(error) {
-            this._handleSetupError("Error loading workspace " + this.getDisplayString() + ": " + error.toString());
+            let errorMsg = error.message ? error.message : error ? error.toString() : "Unknown";
+            this._handleSetupError("Error loading workspace " + this.getDisplayString() + ": " + errorMsg);
         }
     }
     
