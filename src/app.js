@@ -11,6 +11,7 @@ const apogeebase = require('../apogeejs-base-lib/src/apogeejs-base-lib.js');
 const apogee = require('../apogeejs-model-lib/src/apogeejs-model-lib.js');
 
 //libraries
+__globals__._ = apogeeutil._;
 __globals__.apogeeutil = apogeeutil;
 __globals__.apogeebase = apogeebase;
 __globals__.apogee = apogee;
