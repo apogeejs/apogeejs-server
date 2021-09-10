@@ -51,7 +51,7 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
             let inputAction = this._getInputAction(endpointInfo,inputDataMap);
 
             //run action with
-            //output ids - output table, if there is one
+            //output ids - output member, if there is one
             //invalid ok - NO for the output tables, yes if we are only checking completion on root folders
             let outputIds = endpointInfo.outputId ? [endpointInfo.outputId] : null;
             let invalidOk =  endpointInfo.outputId ? false : true;
@@ -120,7 +120,7 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
             inputDataMap.headers = headerData; 
         }
 
-        //get any input trigger table data if applicable
+        //get any input trigger member data if applicable
         if(endpointInfo.inputIds.trigger) {
             inputDataMap.trigger = endpointInfo.inputTriggerValue ? endpointInfo.inputTriggerValue : true;
         }
