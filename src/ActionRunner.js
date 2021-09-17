@@ -114,7 +114,7 @@ class ActionRunner {
 
         //cycle through completion members (which we need to check to see if the calc is finished)
         completionCheckIds.forEach(memberId => {
-            let child = this.workingModel.lookupMemberById(memberId);
+            let child = this.workingModel.lookupObjectById(memberId);
             let childState = child.getState();
             switch(childState) {
                 case apogeeutil.STATE_NORMAL:

@@ -61,7 +61,7 @@ this.debugId = DEBUG_NEXT_HANDLER_ID++;
             let resultValue;
             if(this.outputId) {
                 let model = this.modelManager.getModel();
-                let resultMember = model.lookupMemberById(this.outputId);
+                let resultMember = model.lookupObjectById(this.outputId);
                 resultValue = resultMember.getData();
             }
             this._doSuccessResponse(resultValue);

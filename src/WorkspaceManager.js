@@ -224,7 +224,7 @@ class WorkspaceManager {
             }
 
             //either input or output can be missing, but not both
-            if((endpointInfo.outputId === undefined)&&(apogeeutil.jsonObjectLength(endpointInfo.inputIds) == 0)) throw new Error("No inputs or outputs - endpoint name: " + endpointName)
+            if((endpointInfo.outputId === undefined)&&(apogeeutil._.size(endpointInfo.inputIds) == 0)) throw new Error("No inputs or outputs - endpoint name: " + endpointName)
 
             //if we have header inputs, desired keys should be specified
             if(endpointDescriptor.headerKeys) {
