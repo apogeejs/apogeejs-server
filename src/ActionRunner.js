@@ -12,14 +12,14 @@ class ActionRunner {
 
     /** This method sets the base model as a new empty model. */
     loadNewModel() {
-        this.workingModel = new apogee.Model(this.getModelRunContext());
+        this.workingModel = new apogee.Model(this.getRunContext());
     }
 
     /** This method sets the base model as a clean copy of the given model. */
     copyModel(model) {
         //Clean makes sure the model is not in the middle of a calculation
         //and cleans it up if so. This shouldn't be.
-        this.workingModel = model.getCleanCopy(this.getModelRunContext());
+        this.workingModel = model.getCleanCopy(this.getRunContext());
     }
 
     /** This method returns the current model, such as after completion of the action. */
@@ -28,7 +28,7 @@ class ActionRunner {
     }
 
     /** This gets the model run context that should be used for the model in this action runner. */
-    getModelRunContext() {
+    getRunContext() {
         let modelRunContext = {};
         modelRunContext.doAsynchActionCommand = (modelId,action) => this._runActionOnModelImpl(action,true,"Internal Command:");
         return modelRunContext;
