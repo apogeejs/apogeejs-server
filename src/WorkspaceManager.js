@@ -85,14 +85,7 @@ class WorkspaceManager {
 
             //create and load the base model
             this.modelManager = new ActionRunner();
-            this.modelManager.loadNewModel();
-
-            let loadAction = {};
-            loadAction.action = "loadModel";
-            loadAction.modelJson = modelJson;
-
-            //run the load action with invalidOK and the error msg prefix. No output ids for init workspace
-            await this.modelManager.runActionOnModel(loadAction,null,true,"Error loading base model: ");
+            await this.modelManager.loadModel(modelJson,"Error loading base model: ");
 
             //initialize the endpoint info
             this._populateEndpointInfo();
