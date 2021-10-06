@@ -16,16 +16,18 @@ __globals__.apogeeutil = apogeeutil;
 __globals__.apogeebase = apogeebase;
 __globals__.apogee = apogee;
 
+__globals__.addNameToModelGlobals("_",true);
+__globals__.addNameToModelGlobals("apogeeutil",true);
+
 //allow no user interaction in standard alert/confirm
 __globals__.apogeeLog = (msg) => console.log(message);
 __globals__.apogeeUserAlert = (msg) => console.log(msg);
 __globals__.apogeeUserConfirm = (msg,okText,cancelText,okAction,cancelAction,defaultToOk) => defaultToOk ? okAction : cancelAction;
 __globals__.apogeeUserConfirmSynchronous = (msg,okText,cancelText,defaultToOk) => defaultToOk;
 
-//_require_ is not in globals! We need to put it there so the workspace can access it
-__globals__.__apogee_globals__ = {
-    "require": require
-}
+__globals__.addNameToModelGlobals("apogeeLog",true);
+__globals__.addNameToModelGlobals("apogeeUserAlert",true);
+__globals__.addNameToModelGlobals("apogeeUserConfirm",true);
 
 const thisFileDir = path.dirname(process.argv[1]);
 
