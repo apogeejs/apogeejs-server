@@ -18,6 +18,8 @@ __globals__.apogee = apogee;
 
 __globals__.addNameToModelGlobals("_",true);
 __globals__.addNameToModelGlobals("apogeeutil",true);
+__globals__.addNameToModelGlobals("apogeebase",true);
+__globals__.addNameToModelGlobals("apogee",true);
 
 //allow no user interaction in standard alert/confirm
 __globals__.apogeeLog = (msg) => console.log(message);
